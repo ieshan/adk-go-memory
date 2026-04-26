@@ -1,5 +1,8 @@
 # adk-go-memory
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/ieshan/adk-go-memory.svg)](https://pkg.go.dev/github.com/ieshan/adk-go-memory)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ieshan/adk-go-memory)](https://goreportcard.com/report/github.com/ieshan/adk-go-memory)
+
 Production-grade memory layer for Google ADK-Go agents with automatic observation extraction, hybrid search (vector + FTS), and intelligent context assembly.
 
 ## Overview
