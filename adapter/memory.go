@@ -1,4 +1,3 @@
-// Package adapter provides storage abstractions for the memory layer.
 package adapter
 
 import (

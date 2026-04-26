@@ -142,4 +142,7 @@ fabric.properties
 # Debug files
 __debug_bin
 
+# Examples binary
+examples/basic
+
 adk-go-memory.code-workspace

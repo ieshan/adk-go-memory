@@ -47,18 +47,15 @@ func main() {
 		Storage: storage,
 	})
 
-	// Create memory service
-	svc := memory.NewService(memory.ServiceConfig{
+	// Create memory kit with all components and tools
+	kit, err := memory.NewMemoryKit(memory.MemoryKitConfig{
 		Storage: storage,
 		Deriver: deriver,
 	})
-	defer svc.Close()
-
-	// Create memory search tool
-	memTool, err := memory.NewMemoryTool(storage)
 	if err != nil {
-		log.Fatalf("Failed to create memory tool: %v", err)
+		log.Fatalf("Failed to create memory kit: %v", err)
 	}
+	defer kit.Close()
 
 	// Create agent with memory tool
 	agent, err := llmagent.New(llmagent.Config{
@@ -72,7 +69,7 @@ use the search_memory tool to find relevant information from previous conversati
 
 To use the tool, call search_memory with a query describing what you're looking for.
 Example queries: "user preferences", "user name", "user hobbies", "past activities"`,
-		Tools: []tool.Tool{memTool},
+		Tools: []tool.Tool{kit.LoadTool},
 	})
 	if err != nil {
 		log.Fatalf("Failed to create agent: %v", err)
@@ -85,7 +82,7 @@ Example queries: "user preferences", "user name", "user hobbies", "past activiti
 		AppName:           appName,
 		Agent:             agent,
 		SessionService:    sessionService,
-		MemoryService:     svc,
+		MemoryService:     kit.Service,
 		AutoCreateSession: true,
 	})
 	if err != nil {

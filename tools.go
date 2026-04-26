@@ -1,11 +1,8 @@
 package memory
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 
-	"github.com/ieshan/adk-go-memory/adapter"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
@@ -33,14 +30,14 @@ type ToolObservation struct {
 	Tags    []string `json:"tags,omitempty"`
 }
 
-// MemoryTool implements the tool interface for memory search.
+// MemoryTool implements toolinternal.FunctionTool and RequestProcessor for memory search.
 type MemoryTool struct {
-	storage adapter.Storage
+	provider *Provider
 }
 
-// NewMemoryTool creates a new memory search tool.
-func NewMemoryTool(storage adapter.Storage) (*MemoryTool, error) {
-	return &MemoryTool{storage: storage}, nil
+// NewMemoryTool creates a new memory search tool wired to a Provider.
+func NewMemoryTool(provider *Provider) *MemoryTool {
+	return &MemoryTool{provider: provider}
 }
 
 // Name returns the name of the tool.
@@ -80,56 +77,82 @@ func (m *MemoryTool) Declaration() *genai.FunctionDeclaration {
 	}
 }
 
-// Call executes the memory search.
-func (m *MemoryTool) Call(ctx context.Context, argsJSON string) (string, error) {
-	var args SearchMemoryArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return "", fmt.Errorf("memory tool: parse args: %w", err)
+// Run executes the memory search (implements toolinternal.FunctionTool).
+func (m *MemoryTool) Run(ctx tool.Context, args any) (map[string]any, error) {
+	margs, ok := args.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("memory tool: invalid args type %T", args)
 	}
 
-	maxResults := args.MaxResults
-	if maxResults == 0 {
-		maxResults = 10
+	queryRaw, ok := margs["query"]
+	if !ok {
+		return nil, fmt.Errorf("memory tool: missing required parameter: query")
+	}
+	query, ok := queryRaw.(string)
+	if !ok {
+		return nil, fmt.Errorf("memory tool: query must be a string, got %T", queryRaw)
 	}
 
-	results, err := m.storage.Search(ctx, &adapter.SearchOptions{
-		Query:      args.Query,
-		MaxResults: maxResults,
-		Mode:       adapter.SearchModeHybrid,
-	})
-	if err != nil {
-		return "", fmt.Errorf("memory tool: search: %w", err)
-	}
-
-	output := SearchMemoryResults{
-		Observations: make([]ToolObservation, len(results)),
-	}
-	for i, r := range results {
-		output.Observations[i] = ToolObservation{
-			Content: r.Observation.Content,
-			Level:   string(r.Observation.Level),
-			Tags:    r.Observation.Tags,
+	maxResults := 10
+	if maxRaw, ok := margs["max_results"]; ok {
+		if maxFloat, ok := maxRaw.(float64); ok {
+			maxResults = int(maxFloat)
 		}
 	}
 
-	outputJSON, err := json.Marshal(output)
+	// Use Provider for comprehensive search (includes representation manager)
+	observations, err := m.provider.SearchMemory(ctx, query, "", ctx.UserID(), ctx.AppName())
 	if err != nil {
-		return "", fmt.Errorf("memory tool: marshal results: %w", err)
+		return nil, fmt.Errorf("memory tool: search: %w", err)
 	}
 
-	return string(outputJSON), nil
+	// Limit results
+	if len(observations) > maxResults {
+		observations = observations[:maxResults]
+	}
+
+	output := SearchMemoryResults{
+		Observations: make([]ToolObservation, len(observations)),
+	}
+	for i, obs := range observations {
+		output.Observations[i] = ToolObservation{
+			Content: obs.Content,
+			Level:   string(obs.Level),
+			Tags:    obs.Tags,
+		}
+	}
+
+	return map[string]any{
+		"observations": output.Observations,
+	}, nil
 }
 
 // ProcessRequest implements toolinternal.RequestProcessor.
 // It packs the tool declaration into the LLM request.
 func (m *MemoryTool) ProcessRequest(ctx tool.Context, req *model.LLMRequest) error {
-	// Pack the tool declaration into the request
+	if req.Tools == nil {
+		req.Tools = make(map[string]any)
+	}
+	req.Tools[m.Name()] = m
+
 	if req.Config == nil {
 		req.Config = &genai.GenerateContentConfig{}
 	}
-	decl := m.Declaration()
-	req.Config.Tools = append(req.Config.Tools, &genai.Tool{
-		FunctionDeclarations: []*genai.FunctionDeclaration{decl},
-	})
+
+	// Find existing tool with FunctionDeclarations or create new one
+	var funcTool *genai.Tool
+	for _, tool := range req.Config.Tools {
+		if tool != nil && tool.FunctionDeclarations != nil {
+			funcTool = tool
+			break
+		}
+	}
+	if funcTool == nil {
+		req.Config.Tools = append(req.Config.Tools, &genai.Tool{
+			FunctionDeclarations: []*genai.FunctionDeclaration{m.Declaration()},
+		})
+	} else {
+		funcTool.FunctionDeclarations = append(funcTool.FunctionDeclarations, m.Declaration())
+	}
 	return nil
 }

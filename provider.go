@@ -78,6 +78,41 @@ func (p *Provider) GetMemoryContext(ctx context.Context, query string, sessionID
 	return context, nil
 }
 
+// SearchMemory provides the tool-accessible search interface.
+// This is called by both MemoryTool.Run and PreloadMemoryTool.ProcessRequest.
+func (p *Provider) SearchMemory(ctx context.Context, query, sessionID, userID, appName string) ([]adapter.Observation, error) {
+	if p.storage == nil {
+		return nil, nil
+	}
+
+	// Use representation manager for comprehensive context
+	if p.repManager != nil && query != "" {
+		rep, err := p.repManager.GetWorkingRepresentation(ctx, query, sessionID, userID, appName)
+		if err == nil && len(rep.Observations) > 0 {
+			return rep.Observations, nil
+		}
+	}
+
+	// Fallback to simple search
+	results, err := p.storage.Search(ctx, &adapter.SearchOptions{
+		Query:      query,
+		MaxResults: 10,
+		Mode:       adapter.SearchModeHybrid,
+		SessionID:  sessionID,
+		UserID:     userID,
+		AppName:    appName,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("provider: search: %w", err)
+	}
+
+	observations := make([]adapter.Observation, len(results))
+	for i, r := range results {
+		observations[i] = r.Observation
+	}
+	return observations, nil
+}
+
 // GetOrCreatePeerCard gets or creates a peer card for the given peer ID.
 func (p *Provider) GetOrCreatePeerCard(peerID string) *PeerCard {
 	if pc, ok := p.peerCards[peerID]; ok {

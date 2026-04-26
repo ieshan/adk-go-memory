@@ -237,15 +237,6 @@ func (pc *PeerCard) Facts() []PeerFact
 // ReplaceFacts replaces all facts with the given slice.
 func (pc *PeerCard) ReplaceFacts(facts []PeerFact)
 
-// Prune removes facts with scores below the threshold.
-func (pc *PeerCard) Prune(threshold float64)
-
-// ByType returns facts filtered by observation level.
-func (pc *PeerCard) ByType(level adapter.ObservationLevel) []PeerFact
-
-// ByTag returns facts that have the given tag.
-func (pc *PeerCard) ByTag(tag string) []PeerFact
-
 // Render returns a formatted string representation of the peer card.
 func (pc *PeerCard) Render() string
 ```
@@ -317,8 +308,8 @@ type ToolObservation struct {
     Tags    []string `json:"tags,omitempty"`
 }
 
-// NewMemoryTool creates a new memory search tool.
-func NewMemoryTool(storage adapter.Storage) (*MemoryTool, error)
+// NewMemoryTool creates a new memory search tool wired to a Provider.
+func NewMemoryTool(provider *Provider) *MemoryTool
 
 // Name returns the name of the tool: "search_memory"
 func (m *MemoryTool) Name() string
@@ -329,8 +320,8 @@ func (m *MemoryTool) Description() string
 // Declaration returns the function declaration for the LLM.
 func (m *MemoryTool) Declaration() *genai.FunctionDeclaration
 
-// Call executes the memory search.
-func (m *MemoryTool) Call(ctx context.Context, argsJSON string) (string, error)
+// Run executes the memory search (implements toolinternal.FunctionTool).
+func (m *MemoryTool) Run(ctx tool.Context, args any) (map[string]any, error)
 
 // ProcessRequest implements toolinternal.RequestProcessor.
 func (m *MemoryTool) ProcessRequest(ctx tool.Context, req *model.LLMRequest) error
@@ -434,7 +425,6 @@ import (
     adkagent "google.golang.org/adk/agent"
     "google.golang.org/adk/agent/llmagent"
     "google.golang.org/adk/model"
-    "google.golang.org/adk/model/gemini"
     "google.golang.org/adk/runner"
     "google.golang.org/adk/session"
 )
@@ -556,7 +546,6 @@ func injectMemoryContext(svc *memory.Service) llmagent.BeforeModelCallback {
                 }
             }
         }
-
         return nil, nil
     }
 }
@@ -599,24 +588,30 @@ func main() {
     storage := adapter.InMemory()
     defer storage.Close()
 
-    modelLLM := getLLM() // Your LLM initialization
+    modelLLM := getLLM()
 
+    // Create deriver for automatic fact extraction
     deriver := memory.NewDeriver(memory.DeriverConfig{
         LLM:     modelLLM,
         Storage: storage,
     })
 
+    // Create memory service
     svc := memory.NewService(memory.ServiceConfig{
         Storage: storage,
         Deriver: deriver,
     })
     defer svc.Close()
 
-    // Create memory search tool
-    memTool, err := memory.NewMemoryTool(storage)
+    // Create memory kit with tools
+    kit, err := memory.NewMemoryKit(memory.MemoryKitConfig{
+        Storage: storage,
+        Deriver: deriver,
+    })
     if err != nil {
-        log.Fatalf("Failed to create memory tool: %v", err)
+        log.Fatalf("Failed to create memory kit: %v", err)
     }
+    defer kit.Close()
 
     // Create agent with memory tool
     agent, err := llmagent.New(llmagent.Config{
@@ -630,7 +625,7 @@ use the search_memory tool to find relevant information from previous conversati
 
 To use the tool, call search_memory with a query describing what you're looking for.
 Example queries: "user preferences", "user name", "user hobbies", "past activities"`,
-        Tools: []tool.Tool{memTool},
+        Tools: []tool.Tool{kit.LoadTool},
     })
     if err != nil {
         log.Fatalf("Failed to create agent: %v", err)
@@ -899,9 +894,8 @@ func main() {
     peerCard := provider.GetOrCreatePeerCard(userID)
     log.Printf("Loaded %d facts for user %s", len(peerCard.Facts()), userID)
 
-    // Query peer card by type or tag
-    explicitFacts := peerCard.ByType(adapter.LevelExplicit)
-    preferences := peerCard.ByTag("preference")
+    // Access peer card facts
+    facts := peerCard.Facts()
 
     // Create agent with comprehensive memory context
     agent, err := llmagent.New(llmagent.Config{

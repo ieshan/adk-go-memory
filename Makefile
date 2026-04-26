@@ -9,6 +9,7 @@ setup:
 # Default test run (uses map-based MemoryStorage, no CGO required)
 test:
 	go test -v ./...
+	cd adapter/sqlite && CGO_ENABLED=1 go test -v -tags=sqlite_fts5 ./...
 
 # Run SQLite adapter tests (requires CGO)
 test-sqlite:

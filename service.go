@@ -85,31 +85,32 @@ func (s *Service) AddSessionToMemory(ctx context.Context, sess session.Session) 
 }
 
 // SearchMemory implements memory.Service.
+// Uses Provider for consistent behavior with tools (includes representation manager).
 func (s *Service) SearchMemory(ctx context.Context, req *memory.SearchRequest) (*memory.SearchResponse, error) {
-	if s.storage == nil {
+	if s.provider == nil {
 		return &memory.SearchResponse{Memories: nil}, nil
 	}
 
-	results, err := s.storage.Search(ctx, &adapter.SearchOptions{
-		Query:      req.Query,
-		MaxResults: 10,
-		Mode:       adapter.SearchModeHybrid,
-		UserID:     req.UserID,
-		AppName:    req.AppName,
-	})
+	// Use provider for comprehensive search (includes representation manager)
+	observations, err := s.provider.SearchMemory(ctx, req.Query, "", req.UserID, req.AppName)
 	if err != nil {
 		return nil, fmt.Errorf("service: search memory: %w", err)
 	}
 
-	memories := make([]memory.Entry, len(results))
-	for i, r := range results {
+	memories := make([]memory.Entry, len(observations))
+	for i, obs := range observations {
 		memories[i] = memory.Entry{
-			ID: r.Observation.ID,
+			ID: obs.ID,
 			Content: &genai.Content{
 				Role:  "memory",
-				Parts: []*genai.Part{{Text: r.Observation.Content}},
+				Parts: []*genai.Part{{Text: obs.Content}},
 			},
-			Timestamp: r.Observation.CreatedAt,
+			Timestamp: obs.CreatedAt,
+			CustomMetadata: map[string]any{
+				"level": obs.Level,
+				"tags":  obs.Tags,
+				"score": obs.Score(),
+			},
 		}
 	}
 

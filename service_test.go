@@ -28,7 +28,8 @@ func TestService_AddSessionToMemory_ExtractsObservations(t *testing.T) {
 	}
 
 	deriver := NewDeriver(DeriverConfig{LLM: llm, Storage: storage})
-	svc := NewService(ServiceConfig{Storage: storage, Deriver: deriver})
+	provider := NewProvider(ProviderConfig{Storage: storage})
+	svc := NewService(ServiceConfig{Provider: provider, Deriver: deriver})
 
 	sess := &mockSession{
 		id:      "sess-1",
@@ -67,7 +68,8 @@ func TestService_SearchMemory_ReturnsResults(t *testing.T) {
 	ctx := context.Background()
 	storage := adapter.InMemory()
 
-	svc := NewService(ServiceConfig{Storage: storage})
+	provider := NewProvider(ProviderConfig{Storage: storage})
+	svc := NewService(ServiceConfig{Provider: provider})
 
 	// Pre-populate storage
 	obs := &adapter.Observation{

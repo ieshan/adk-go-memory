@@ -2,32 +2,23 @@ package memory
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
+	"google.golang.org/adk/agent"
+	"google.golang.org/adk/memory"
+	"google.golang.org/adk/session"
+	"google.golang.org/adk/tool/toolconfirmation"
+	"google.golang.org/genai"
 )
 
 func TestNewMemoryTool(t *testing.T) {
-	ctx := context.Background()
 	storage := adapter.InMemory()
+	provider := NewProvider(ProviderConfig{Storage: storage})
 
-	// Pre-populate observations
-	observations := []*adapter.Observation{
-		{ID: "obs-1", Content: "user likes Go", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 1, CreatedAt: time.Now()},
-		{ID: "obs-2", Content: "user is 25", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 1, CreatedAt: time.Now()},
-	}
-	for _, obs := range observations {
-		if err := storage.Store(ctx, obs); err != nil {
-			t.Fatalf("Store() error = %v", err)
-		}
-	}
-
-	tool, err := NewMemoryTool(storage)
-	if err != nil {
-		t.Fatalf("NewMemoryTool() error = %v", err)
-	}
+	tool := NewMemoryTool(provider)
 
 	if tool == nil {
 		t.Fatal("NewMemoryTool() returned nil")
@@ -54,8 +45,7 @@ func TestNewMemoryTool(t *testing.T) {
 	}
 }
 
-func TestMemoryTool_Call_WithResults(t *testing.T) {
-	ctx := context.Background()
+func TestMemoryTool_Run_WithResults(t *testing.T) {
 	storage := adapter.InMemory()
 
 	// Pre-populate storage
@@ -67,76 +57,69 @@ func TestMemoryTool_Call_WithResults(t *testing.T) {
 		AppName:   "test-app",
 		CreatedAt: time.Now(),
 	}
-	if err := storage.Store(ctx, obs); err != nil {
+	if err := storage.Store(nil, obs); err != nil {
 		t.Fatalf("Store() error = %v", err)
 	}
 
-	tool, err := NewMemoryTool(storage)
+	provider := NewProvider(ProviderConfig{Storage: storage})
+	tool := NewMemoryTool(provider)
+
+	tc := &mockToolContext{userID: "user1", appName: "test-app"}
+	args := map[string]any{"query": "hiking"}
+	result, err := tool.Run(tc, args)
 	if err != nil {
-		t.Fatalf("NewMemoryTool() error = %v", err)
+		t.Fatalf("Run() error = %v", err)
 	}
 
-	argsJSON := `{"query":"hiking"}`
-	result, err := tool.Call(ctx, argsJSON)
-	if err != nil {
-		t.Fatalf("Call() error = %v", err)
+	observations, ok := result["observations"].([]ToolObservation)
+	if !ok {
+		t.Fatalf("Expected []ToolObservation, got %T", result["observations"])
 	}
 
-	var output SearchMemoryResults
-	if err := json.Unmarshal([]byte(result), &output); err != nil {
-		t.Fatalf("Unmarshal result error = %v", err)
-	}
-
-	if len(output.Observations) == 0 {
+	if len(observations) == 0 {
 		t.Error("Expected at least one search result")
 	}
-	if output.Observations[0].Content != "user enjoys hiking on weekends" {
-		t.Errorf("Content = %q, want 'user enjoys hiking on weekends'", output.Observations[0].Content)
+	if observations[0].Content != "user enjoys hiking on weekends" {
+		t.Errorf("Content = %q, want 'user enjoys hiking on weekends'", observations[0].Content)
 	}
 }
 
-func TestMemoryTool_Call_NoResults(t *testing.T) {
-	ctx := context.Background()
+func TestMemoryTool_Run_NoResults(t *testing.T) {
 	storage := adapter.InMemory()
+	provider := NewProvider(ProviderConfig{Storage: storage})
+	tool := NewMemoryTool(provider)
 
-	tool, err := NewMemoryTool(storage)
+	tc := &mockToolContext{userID: "user1", appName: "test-app"}
+	args := map[string]any{"query": "nonexistent"}
+	result, err := tool.Run(tc, args)
 	if err != nil {
-		t.Fatalf("NewMemoryTool() error = %v", err)
+		t.Fatalf("Run() error = %v", err)
 	}
 
-	argsJSON := `{"query":"nonexistent"}`
-	result, err := tool.Call(ctx, argsJSON)
-	if err != nil {
-		t.Fatalf("Call() error = %v", err)
+	observations, ok := result["observations"].([]ToolObservation)
+	if !ok {
+		t.Fatalf("Expected []ToolObservation, got %T", result["observations"])
 	}
 
-	var output SearchMemoryResults
-	if err := json.Unmarshal([]byte(result), &output); err != nil {
-		t.Fatalf("Unmarshal result error = %v", err)
-	}
-
-	if len(output.Observations) != 0 {
-		t.Errorf("Expected 0 results for empty storage, got %d", len(output.Observations))
+	if len(observations) != 0 {
+		t.Errorf("Expected 0 results for empty storage, got %d", len(observations))
 	}
 }
 
-func TestMemoryTool_Call_InvalidJSON(t *testing.T) {
-	ctx := context.Background()
+func TestMemoryTool_Run_MissingQuery(t *testing.T) {
 	storage := adapter.InMemory()
+	provider := NewProvider(ProviderConfig{Storage: storage})
+	tool := NewMemoryTool(provider)
 
-	tool, err := NewMemoryTool(storage)
-	if err != nil {
-		t.Fatalf("NewMemoryTool() error = %v", err)
-	}
-
-	_, err = tool.Call(ctx, "not valid json")
+	tc := &mockToolContext{userID: "user1", appName: "test-app"}
+	args := map[string]any{"max_results": 5.0}
+	_, err := tool.Run(tc, args)
 	if err == nil {
-		t.Error("Expected error for invalid JSON args")
+		t.Error("Expected error for missing query")
 	}
 }
 
-func TestMemoryTool_Call_EmptyQuery(t *testing.T) {
-	ctx := context.Background()
+func TestMemoryTool_Run_EmptyQuery(t *testing.T) {
 	storage := adapter.InMemory()
 
 	obs := &adapter.Observation{
@@ -145,61 +128,94 @@ func TestMemoryTool_Call_EmptyQuery(t *testing.T) {
 		Level:     adapter.LevelExplicit,
 		CreatedAt: time.Now(),
 	}
-	if err := storage.Store(ctx, obs); err != nil {
+	if err := storage.Store(nil, obs); err != nil {
 		t.Fatalf("Store() error = %v", err)
 	}
 
-	tool, err := NewMemoryTool(storage)
-	if err != nil {
-		t.Fatalf("NewMemoryTool() error = %v", err)
-	}
+	provider := NewProvider(ProviderConfig{Storage: storage})
+	tool := NewMemoryTool(provider)
 
-	argsJSON := `{"query":""}`
-	result, err := tool.Call(ctx, argsJSON)
+	tc := &mockToolContext{userID: "user1", appName: "test-app"}
+	args := map[string]any{"query": ""}
+	result, err := tool.Run(tc, args)
 	if err != nil {
-		t.Fatalf("Call() error = %v", err)
+		t.Fatalf("Run() error = %v", err)
 	}
 
 	// Empty query should still work (fallback to recent)
-	var output SearchMemoryResults
-	if err := json.Unmarshal([]byte(result), &output); err != nil {
-		t.Fatalf("Unmarshal result error = %v", err)
+	_, ok := result["observations"]
+	if !ok {
+		t.Error("Expected observations in result")
 	}
 }
 
-func TestMemoryTool_Call_WithMaxResults(t *testing.T) {
-	ctx := context.Background()
+func TestMemoryTool_Run_WithMaxResults(t *testing.T) {
 	storage := adapter.InMemory()
 
 	for i := 0; i < 5; i++ {
 		obs := &adapter.Observation{
-			ID:        "obs-" + string(rune('a'+i)),
-			Content:   "test observation " + string(rune('a'+i)),
+			ID:        fmt.Sprintf("obs-%d", i),
+			Content:   fmt.Sprintf("test observation %d", i),
 			Level:     adapter.LevelExplicit,
 			CreatedAt: time.Now(),
 		}
-		if err := storage.Store(ctx, obs); err != nil {
+		if err := storage.Store(nil, obs); err != nil {
 			t.Fatalf("Store() error = %v", err)
 		}
 	}
 
-	tool, err := NewMemoryTool(storage)
+	provider := NewProvider(ProviderConfig{Storage: storage})
+	tool := NewMemoryTool(provider)
+
+	tc := &mockToolContext{userID: "user1", appName: "test-app"}
+	args := map[string]any{"query": "test", "max_results": 2.0}
+	result, err := tool.Run(tc, args)
 	if err != nil {
-		t.Fatalf("NewMemoryTool() error = %v", err)
+		t.Fatalf("Run() error = %v", err)
 	}
 
-	argsJSON := `{"query":"test","max_results":2}`
-	result, err := tool.Call(ctx, argsJSON)
-	if err != nil {
-		t.Fatalf("Call() error = %v", err)
+	observations, ok := result["observations"].([]ToolObservation)
+	if !ok {
+		t.Fatalf("Expected []ToolObservation, got %T", result["observations"])
 	}
 
-	var output SearchMemoryResults
-	if err := json.Unmarshal([]byte(result), &output); err != nil {
-		t.Fatalf("Unmarshal result error = %v", err)
-	}
-
-	if len(output.Observations) > 2 {
-		t.Errorf("Expected at most 2 results, got %d", len(output.Observations))
+	if len(observations) > 2 {
+		t.Errorf("Expected at most 2 results, got %d", len(observations))
 	}
 }
+
+// mockToolContext implements tool.Context for testing
+type mockToolContext struct {
+	userID  string
+	appName string
+}
+
+func (m *mockToolContext) FunctionCallID() string         { return "" }
+func (m *mockToolContext) Actions() *session.EventActions { return &session.EventActions{} }
+func (m *mockToolContext) SearchMemory(ctx context.Context, query string) (*memory.SearchResponse, error) {
+	return nil, nil
+}
+func (m *mockToolContext) ToolConfirmation() *toolconfirmation.ToolConfirmation { return nil }
+func (m *mockToolContext) RequestConfirmation(hint string, payload any) error   { return nil }
+func (m *mockToolContext) UserID() string                                       { return m.userID }
+func (m *mockToolContext) AppName() string                                      { return m.appName }
+func (m *mockToolContext) SessionID() string                                    { return "" }
+func (m *mockToolContext) AgentName() string                                    { return "" }
+func (m *mockToolContext) State() session.State                                 { return nil }
+func (m *mockToolContext) Artifacts() agent.Artifacts                           { return nil }
+func (m *mockToolContext) InvocationContext() agent.InvocationContext           { return nil }
+func (m *mockToolContext) EndInvocation()                                       {}
+func (m *mockToolContext) Ended() bool                                          { return false }
+func (m *mockToolContext) UserContent() *genai.Content {
+	return &genai.Content{Parts: []*genai.Part{{Text: ""}}}
+}
+func (m *mockToolContext) Context() context.Context             { return context.Background() }
+func (m *mockToolContext) Branch() string                       { return "" }
+func (m *mockToolContext) InvocationID() string                 { return "" }
+func (m *mockToolContext) ReadonlyState() session.ReadonlyState { return nil }
+
+// context.Context methods (tool.Context embeds context.Context)
+func (m *mockToolContext) Deadline() (deadline time.Time, ok bool) { return time.Time{}, false }
+func (m *mockToolContext) Done() <-chan struct{}                   { return nil }
+func (m *mockToolContext) Err() error                              { return nil }
+func (m *mockToolContext) Value(key any) any                       { return nil }

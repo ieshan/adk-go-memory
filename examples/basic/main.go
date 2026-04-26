@@ -1,10 +1,10 @@
-// Package main demonstrates a basic agent with memory integration.
+// Package main demonstrates a basic agent with memory integration using ADK-Go v1.2.0 patterns.
 //
 // This example shows how to:
 //   - Set up storage for observations (in-memory map or SQLite adapter)
 //   - Create a Deriver for automatic fact extraction from conversations
-//   - Wire the memory service into an ADK-Go agent
-//   - Use BeforeModelCallback to inject memory context into prompts
+//   - Wire the memory service into an ADK-Go agent using MemoryKit
+//   - Use memory tools (preload_memory and search_memory) for automatic and explicit memory access
 //
 // The agent automatically extracts observations from conversations and can
 // recall them in subsequent interactions.
@@ -20,9 +20,6 @@ import (
 
 	"google.golang.org/genai"
 
-	"google.golang.org/adk/agent"
-	adkmemory "google.golang.org/adk/memory"
-
 	memory "github.com/ieshan/adk-go-memory"
 	"github.com/ieshan/adk-go-memory/adapter"
 	"github.com/ieshan/adk-go-memory/adapter/sqlite"
@@ -32,6 +29,7 @@ import (
 	"google.golang.org/adk/model/gemini"
 	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
+	"google.golang.org/adk/tool"
 )
 
 func main() {
@@ -50,30 +48,29 @@ func main() {
 		log.Fatalf("Failed to create LLM: %v", err)
 	}
 
-	// Create deriver for automatic fact extraction from conversations
-	deriver := memory.NewDeriver(memory.DeriverConfig{
-		LLM:     modelLLM,
+	// Create memory kit with all components (ADK-Go v1.2.0 pattern)
+	kit, err := memory.NewMemoryKit(memory.MemoryKitConfig{
 		Storage: storage,
+		Deriver: memory.NewDeriver(memory.DeriverConfig{
+			LLM:     modelLLM,
+			Storage: storage,
+		}),
 	})
+	if err != nil {
+		log.Fatalf("Failed to create memory kit: %v", err)
+	}
+	defer kit.Close()
 
-	// Create memory service implementing google.golang.org/adk/memory.Service
-	svc := memory.NewService(memory.ServiceConfig{
-		Storage: storage,
-		Deriver: deriver,
-	})
-	defer svc.Close()
-
-	// Create agent with memory-aware instruction and callback
+	// Create agent with memory tools for automatic and explicit memory access
 	agentInst, err := llmagent.New(llmagent.Config{
 		Name:        "memory_assistant",
 		Model:       modelLLM,
 		Description: "An assistant that remembers facts about users",
-		Instruction: "You are a helpful assistant. Use the conversation context to answer questions. " +
-			"If the user mentions facts about themselves, acknowledge them. " +
-			"If you have context from memory, use it to personalize your responses.",
-		BeforeModelCallbacks: []llmagent.BeforeModelCallback{
-			injectMemoryContext(svc),
-		},
+		Instruction: "You are a helpful assistant with access to memory. " +
+			"Relevant memories are automatically preloaded for each request. " +
+			"If the preloaded context is not enough, use the search_memory tool " +
+			"to search for additional information. Use what you remember to personalize responses.",
+		Tools: []tool.Tool{kit.PreloadTool, kit.LoadTool},
 	})
 	if err != nil {
 		log.Fatalf("Failed to create agent: %v", err)
@@ -86,7 +83,7 @@ func main() {
 		AppName:           appName,
 		Agent:             agentInst,
 		SessionService:    sessionService,
-		MemoryService:     svc,
+		MemoryService:     kit.Service,
 		AutoCreateSession: true,
 	})
 	if err != nil {
@@ -153,70 +150,6 @@ func createLLM(ctx context.Context) (model.LLM, error) {
 
 	// Return nil - tests will use fake LLM
 	return nil, fmt.Errorf("GOOGLE_API_KEY not set - use fake LLM for testing")
-}
-
-// injectMemoryContext returns a BeforeModelCallback that searches memory
-// and injects relevant context into the system prompt.
-func injectMemoryContext(svc *memory.Service) llmagent.BeforeModelCallback {
-	return func(ctx agent.CallbackContext, req *model.LLMRequest) (*model.LLMResponse, error) {
-		// Get the user's query from the request
-		if len(req.Contents) == 0 {
-			return nil, nil
-		}
-
-		// Find the most recent user content
-		var userQuery string
-		for i := len(req.Contents) - 1; i >= 0; i-- {
-			content := req.Contents[i]
-			if content.Role == genai.RoleUser && len(content.Parts) > 0 {
-				userQuery = content.Parts[0].Text
-				break
-			}
-		}
-
-		if userQuery == "" {
-			return nil, nil
-		}
-
-		// Search memory for relevant context
-		searchResp, err := svc.SearchMemory(ctx, &adkmemory.SearchRequest{
-			Query:   userQuery,
-			UserID:  ctx.UserID(),
-			AppName: ctx.AppName(),
-		})
-		if err != nil {
-			// Log but don't fail the request
-			log.Printf("Memory search error: %v", err)
-			return nil, nil
-		}
-
-		if len(searchResp.Memories) == 0 {
-			return nil, nil
-		}
-
-		// Build memory context string
-		var memContext strings.Builder
-		memContext.WriteString("\n\n**Relevant Information from Memory:**\n")
-		for _, mem := range searchResp.Memories {
-			if mem.Content != nil && len(mem.Content.Parts) > 0 {
-				memContext.WriteString("- ")
-				memContext.WriteString(mem.Content.Parts[0].Text)
-				memContext.WriteString("\n")
-			}
-		}
-
-		// Inject memory into system instruction (first content if it's a system message)
-		for _, content := range req.Contents {
-			if content.Role == "system" || content.Role == genai.RoleModel {
-				if len(content.Parts) > 0 {
-					content.Parts[0].Text += memContext.String()
-					break
-				}
-			}
-		}
-
-		return nil, nil
-	}
 }
 
 // showMemory displays what the system remembers about the user.
