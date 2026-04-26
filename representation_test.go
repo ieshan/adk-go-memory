@@ -13,11 +13,7 @@ import (
 
 func TestRepresentationManager_StrategyOrdering(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	now := time.Now()
 	// Create observations with specific TimesDerived and timestamps
@@ -84,8 +80,10 @@ func TestRepresentationManager_StrategyOrdering(t *testing.T) {
 	}
 
 	// Check that most-derived section contains obs-old-high
+	// Derived observations start after semantic observations
+	derivedStart := rep.SemanticCount
 	foundHighDerived := false
-	for i := 0; i < rep.DerivedCount && i < len(rep.Observations); i++ {
+	for i := derivedStart; i < derivedStart+rep.DerivedCount && i < len(rep.Observations); i++ {
 		if rep.Observations[i].ID == "obs-old-high" {
 			foundHighDerived = true
 			break
@@ -111,11 +109,7 @@ func TestRepresentationManager_StrategyOrdering(t *testing.T) {
 
 func TestRepresentationManager_NoDuplicates(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	now := time.Now()
 	// Single observation that would appear in all three strategies
@@ -170,11 +164,7 @@ func TestRepresentationManager_NoDuplicates(t *testing.T) {
 
 func TestRepresentationManager_EmptyStorage(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	embedFn := func(ctx context.Context, text string) ([]float32, error) {
 		return fakeEmbedding("test"), nil
@@ -204,11 +194,7 @@ func TestRepresentationManager_EmptyStorage(t *testing.T) {
 
 func TestRepresentationManager_NoEmbeddingFunc(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	obs := &adapter.Observation{
 		ID:           "obs-1",

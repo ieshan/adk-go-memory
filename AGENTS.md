@@ -1,204 +1,172 @@
 # AGENTS.md
 
-Development guide for AI coding agents working on `adk-go-memory`.
+Guide for AI coding agents working in `github.com/ieshan/adk-go-memory`.
 
-## Project Overview
+## Repository Snapshot
 
-`adk-go-memory` is a production-grade memory layer for Google ADK-Go agents. It provides:
+- Language: Go (`go 1.26` in root and submodules)
+- Workspace: `go.work` includes:
+  - root module (`.`)
+  - `adapter/sqlite` submodule
+  - `examples` submodule
+- Main package purpose: ADK-Go memory service with observation extraction, storage/search, context assembly, summaries, and tool integration.
 
-- Automatic observation extraction from conversations using LLM
-- Hybrid search (vector + FTS5) via SQLite with sqlite-vec
-- Deduplication via Reciprocal Rank Fusion
-- Working representations for context assembly
-- Peer Cards for user modeling
-- Full ADK-Go `memory.Service` interface implementation
+## Rule Files Found
 
-## Build Requirements
+- Found: `AGENTS.md` (this file), `MEMORY.md`
+- Not found during scan: `.cursor/rules/*.md`, `.cursorrules`, `.github/copilot-instructions.md`, `claude.md`, lowercase `agents.md`
 
-**Critical: CGO must be enabled for all operations.**
+## Essential Commands
 
-The project depends on `sqlite-vec` which requires CGO:
-
-```bash
-# All build/test commands require CGO
-export CGO_ENABLED=1
-
-# Build requires sqlite_fts5 build tag
-go build -tags=sqlite_fts5 ./...
-```
-
-### Prerequisites
-
-- Go 1.26+
-- CGO-enabled toolchain
-- SQLite with FTS5 support (via mattn/go-sqlite3)
-
-## Development Commands
-
-Use the Makefile for common tasks:
+Use the Makefile at repo root.
 
 ```bash
-# Run tests (default)
+# Core tests (root module)
 make test
 
-# Run with race detection
+# SQLite adapter tests (submodule, CGO + sqlite_fts5 tag)
+make test-sqlite
+
+# Race tests across root + sqlite submodule
 make test-race
 
-# Build all packages
+# Build root + sqlite submodule
 make build
 
-# Run go vet
+# Vet root + sqlite submodule
 make vet
 
-# Full check (vet + test)
+# Full check
 make check
 
-# Coverage report
+# Coverage (root + sqlite adapter)
 make coverage
 
-# Clean artifacts
+# Clean coverage artifacts
 make clean
 ```
 
-## Testing
-
-All tests require `CGO_ENABLED=1` and the `sqlite_fts5` build tag:
+Direct commands used by Makefile:
 
 ```bash
-# Run all tests
-CGO_ENABLED=1 go test -v -tags=sqlite_fts5 ./...
-
-# Run specific package tests
-CGO_ENABLED=1 go test -v -tags=sqlite_fts5 ./adapter
-
-# Run with race detector
-CGO_ENABLED=1 go test -v -race -tags=sqlite_fts5 ./...
+go test -v ./...
+cd adapter/sqlite && CGO_ENABLED=1 go test -v -tags=sqlite_fts5 ./...
+go test -v -race ./...
+cd adapter/sqlite && CGO_ENABLED=1 go test -v -race -tags=sqlite_fts5 ./...
+go build ./...
+cd adapter/sqlite && CGO_ENABLED=1 go build -tags=sqlite_fts5 ./...
+go vet ./...
+cd adapter/sqlite && CGO_ENABLED=1 go vet -tags=sqlite_fts5 ./...
 ```
 
-### Test Structure
+## Build/Test Requirements
 
-- `*_test.go` files alongside source files
-- `fakeLLM` helper in `deriver.go` for mocking LLM calls
-- In-memory SQLite storage used for isolated tests
+- Root module is pure Go and uses `adapter.InMemory()` for storage tests.
+- SQLite adapter in `adapter/sqlite` requires:
+  - `CGO_ENABLED=1`
+  - build tag `sqlite_fts5`
+  - dependencies in submodule `adapter/sqlite/go.mod` (`mattn/go-sqlite3`, `sqlite-vec-go-bindings`)
 
 ## Project Structure
 
-```
+```text
 .
-├── adapter/          # Storage abstraction and SQLite implementation
-│   ├── adapter.go    # Storage interface and types
-│   ├── sqlite.go     # SQLite + sqlite-vec implementation
-│   └── sqlite_test.go
-├── service.go        # Main memory.Service implementation
-├── deriver.go        # LLM-powered observation extraction
-├── provider.go       # Context assembly provider
-├── representation.go # Working representation management
-├── peercard.go       # User profile/fact tracking
-├── summarizer.go     # Periodic conversation summarization
-├── dialectic.go      # LLM-powered Q&A on memory
-├── tools.go          # ADK tool integration
-└── doc.go            # Package documentation
+├── service.go                  # memory.Service implementation
+├── deriver.go                  # LLM-based fact extraction + dedup
+├── provider.go                 # Orchestration + peer cards + representation manager
+├── representation.go           # Semantic/derived/recent context assembly
+├── peercard.go                 # Per-user scored facts (max 40)
+├── summarizer.go               # Interval-based summaries
+├── dialectic.go                # LLM answer synthesis from memory search
+├── tools.go                    # search_memory ADK tool
+├── adapter/
+│   ├── adapter.go              # Core types/interfaces (Storage, Observation, SearchMode)
+│   ├── memory.go               # In-memory map implementation
+│   └── sqlite/                 # Separate module, SQLite + vec + FTS5
+├── examples/                   # Separate module with runnable demos + tests
+└── Makefile
 ```
 
-## Key Conventions
+## Code Patterns and Conventions Observed
 
-### Code Style
+### Interfaces and compile-time checks
 
-- Standard Go formatting: `go fmt ./...`
-- Pass `context.Context` as first parameter
-- Return errors with wrapped context: `fmt.Errorf("op: %w", err)`
-- Interface compliance checks: `var _ Interface = (*Type)(nil)`
+- Interface conformance checks are used, e.g.:
+  - `var _ memory.Service = (*Service)(nil)`
+  - `var _ adapter.Storage = (*SQLiteStorage)(nil)`
 
-### Observation Levels
+### Error style
 
-Observations have confidence levels defined in `adapter/adapter.go`:
+- Errors are wrapped with operation context (`fmt.Errorf("component: op: %w", err)`).
+- Storage layers return explicit not-found / validation errors for many operations.
 
-- `explicit` (0.9) - Directly stated facts
-- `deductive` (0.7) - Logical inferences
-- `inductive` (0.5) - Patterns from 3+ observations
-- `contradiction` (0.3) - Conflicting statements
+### Search defaults and modes
 
-### Storage Interface
+- `SearchModeHybrid` is zero value (`iota` first), so unset mode defaults to hybrid.
+- Sources used in `SearchResult.Source` include:
+  - `rrf`, `vector`, `fts`, and `vector_fallback`
 
-All storage implementations must satisfy `adapter.Storage`:
+### In-memory storage behavior (`adapter/memory.go`)
 
-```go
-type Storage interface {
-    Store(ctx context.Context, obs *Observation) error
-    Search(ctx context.Context, opts *SearchOptions) ([]SearchResult, error)
-    QueryMostDerived(ctx context.Context, sessionID, userID, appName string, limit int) ([]Observation, error)
-    QueryRecent(ctx context.Context, sessionID, userID, appName string, limit int) ([]Observation, error)
-    // ... see adapter/adapter.go
-}
-```
+- Uses `sync.RWMutex` + map.
+- Search is case-insensitive substring matching on content.
+- Vector-only mode with no query returns empty results.
+- `Store` and `GetByID` clone observations (including tags/embeddings) to avoid external mutation.
 
-### Search Modes
+### SQLite storage behavior (`adapter/sqlite/sqlite.go`)
 
-The adapter supports three search modes:
+- Schema includes `observations`, `observations_fts` (FTS5), `vec_observations` (vec0 float[1536]).
+- `Store`, `Forget`, and `Purge` use transactions to keep main/FTS/vector tables consistent.
+- Hybrid search uses Reciprocal Rank Fusion (constant `k=60`).
+- FTS query is sanitized (`sanitizeFTS5Query`) and can fallback to recent results on syntax errors.
 
-- `SearchModeVector` - Vector similarity (requires embedding)
-- `SearchModeFTS` - Full-text search via FTS5
-- `SearchModeHybrid` - RRF fusion of both (default)
+### Deriver behavior (`deriver.go`)
 
-## Dependencies
+- Requires `LLM`; otherwise returns error.
+- LLM response must be JSON with `observations` array.
+- Unknown observation level defaults to `inductive`.
+- Dedup search uses hybrid mode and thresholding by source (`rrf`, `fts`, `vector`).
+- Optional `EmbeddingFunc` enables vector-based dedup; nil means text-only dedup path.
 
-Key external dependencies (see `go.mod`):
+### Provider / representation behavior
 
-- `github.com/asg017/sqlite-vec-go-bindings` - Vector search for SQLite
-- `github.com/mattn/go-sqlite3` - SQLite driver (requires CGO)
-- `google.golang.org/adk` - ADK-Go framework
-- `google.golang.org/genai` - Google GenAI SDK
+- `Provider` initializes a `RepresentationManager` with default budgets of 5/5/5 when storage exists.
+- Working representation combines semantic + most-derived + recent while deduplicating by observation ID.
+- `WorkingRepresentation.Format()` prefixes entries as `[semantic]`, `[derived]`, `[recent]`.
 
-## Common Tasks
+### Peer card behavior (`peercard.go`)
 
-### Adding a New Storage Backend
+- Hard capacity: `maxPeerCardFacts = 40`.
+- At capacity, only replaces the lowest-score fact if incoming fact score is higher.
+- `Render()` sorts by score descending and groups by observation type.
 
-1. Implement `adapter.Storage` interface
-2. Add constructor (e.g., `NewPostgresStorage`)
-3. Create `*_test.go` with full test coverage
-4. Update README.md with usage example
+## Testing Approach Observed
 
-### Adding LLM-Powered Features
+- Tests are colocated `*_test.go` across root, adapter, submodule, and examples.
+- Fake LLM implementations are used for deterministic testing:
+  - root: `fakeLLM` in `deriver.go`
+  - examples: `examples/internal/testutil/fakellm.go`
+- SQLite tests use `InMemory()` storage from sqlite submodule and validate:
+  - vector/fts/hybrid behavior
+  - table sync on delete/purge
+  - filter behavior and defaults
+- Example tests validate tool calls and ADK runner flows without external API calls.
 
-Follow the `Deriver` pattern:
+## Gotchas and Non-Obvious Behaviors
 
-1. Define config struct with `LLM model.LLM` and `Storage`
-2. Create system prompt constant
-3. Parse structured JSON from LLM responses
-4. Add `fakeLLM` tests for deterministic testing
+- CGO/tag requirements apply only to `adapter/sqlite` paths.
+- `SearchMode` default is hybrid because `SearchModeHybrid` is zero value.
+- SQLite vector search without embedding intentionally falls back to recent observations (`vector_fallback`).
+- `Purge` behavior differs by backend:
+  - SQLite: rejects unknown keys and requires at least one recognized key (`session_id`, `user_id`, `app_name`).
+  - In-memory: rejects unknown keys, but empty filter map will match all and delete all observations.
+- Both `Service.Close()` and `Provider.Close()` call `storage.Close()`. If both share the same storage instance, avoid double-closing in new code paths.
+- Example `main` programs use real LLM setup placeholders or API-key checks; tests rely on fake LLMs instead.
 
-### Working with Observations
+## Practical Agent Workflow
 
-```go
-// Creating an observation
-obs := &adapter.Observation{
-    ID:           generateID("obs"),
-    Content:      "fact content",
-    Level:        adapter.LevelExplicit,
-    SessionID:    sessionID,
-    Tags:         []string{"tag1", "tag2"},
-    TimesDerived: 1,
-    CreatedAt:    time.Now(),
-}
-
-// Score combines level + times_derived
-score := obs.Score() // 0.0 - 1.0
-```
-
-## CI/PR Requirements
-
-Before committing:
-
-1. Run `make check` (vet + test)
-2. Ensure `CGO_ENABLED=1` is set
-3. All tests must pass with `-tags=sqlite_fts5`
-4. Code formatted with `go fmt ./...`
-5. No references to "Honcho" (this is an independent ADK-Go package)
-
-## Important Notes
-
-- **Never disable CGO** - sqlite-vec requires it
-- **Always use build tag** - `-tags=sqlite_fts5` required for FTS5 virtual tables
-- **Close storage** - Call `storage.Close()` to release resources
-- **Session IDs** - Used for deduplication scoping
-- **No breaking changes** to `memory.Service` interface (ADK-Go compatibility)
+1. Prefer `make test` for root-only changes.
+2. If touching `adapter/sqlite`, run `make test-sqlite` (and usually `make check`).
+3. If touching search or retrieval semantics, run relevant adapter tests plus service/provider tests.
+4. Keep interface assertions, error wrapping style, and cloning/dedup patterns consistent.
+5. For new storage behavior, update both root adapter tests and sqlite submodule tests when behavior should match.

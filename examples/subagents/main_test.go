@@ -32,11 +32,7 @@ func TestSubAgents_MemoryExtraction(t *testing.T) {
 	}
 
 	// Setup storage + memory service
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	deriver := memory.NewDeriver(memory.DeriverConfig{LLM: llm, Storage: storage})
 
@@ -78,7 +74,7 @@ func TestSubAgents_MemoryExtractedFromAllAgents(t *testing.T) {
 		},
 	}
 
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	deriver := memory.NewDeriver(memory.DeriverConfig{LLM: llm, Storage: storage})

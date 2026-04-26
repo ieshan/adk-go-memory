@@ -3,7 +3,6 @@ package adapter
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"time"
 )
@@ -124,18 +123,4 @@ type Storage interface {
 	// QueryRecent returns observations sorted by created_at DESC (most recent first).
 	// Used by RepresentationManager for building working representations.
 	QueryRecent(ctx context.Context, sessionID, userID, appName string, limit int) ([]Observation, error)
-}
-
-// StorageError represents an error from the storage layer.
-type StorageError struct {
-	Op  string
-	Err error
-}
-
-func (e *StorageError) Error() string {
-	return fmt.Sprintf("storage %s: %v", e.Op, e.Err)
-}
-
-func (e *StorageError) Unwrap() error {
-	return e.Err
 }

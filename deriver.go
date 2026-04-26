@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"iter"
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
@@ -49,16 +48,15 @@ type deriverResponse struct {
 }
 
 type deriverObs struct {
-	Content    string   `json:"content"`
-	Level      string   `json:"level"`
-	Confidence float64  `json:"confidence"` // 0 = use level-based default
-	Tags       []string `json:"tags"`
+	Content string   `json:"content"`
+	Level   string   `json:"level"`
+	Tags    []string `json:"tags"`
 }
 
 const deriverSystemPrompt = `You are a memory extraction agent. Analyze the conversation and extract factual observations about the user.
 
 Return a JSON object with this exact structure:
-{"observations": [{"content": "observation text", "level": "explicit|deductive|inductive|contradiction", "confidence": 0.95, "tags": ["tag1", "tag2"]}]}
+{"observations": [{"content": "observation text", "level": "explicit|deductive|inductive|contradiction", "tags": ["tag1", "tag2"]}]}
 
 Observation levels:
 - explicit: directly stated facts
@@ -274,25 +272,4 @@ func randomID(prefix string) (string, error) {
 		return "", err
 	}
 	return prefix + "-" + hex.EncodeToString(b[:]), nil
-}
-
-// fakeLLM is a test helper that implements model.LLM for testing.
-type fakeLLM struct {
-	responses []model.LLMResponse
-	calls     []*model.LLMRequest
-}
-
-func (f *fakeLLM) Name() string { return "fake-llm" }
-
-func (f *fakeLLM) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
-	f.calls = append(f.calls, req)
-	return func(yield func(*model.LLMResponse, error) bool) {
-		if len(f.responses) == 0 {
-			yield(nil, fmt.Errorf("fakeLLM: no responses configured"))
-			return
-		}
-		resp := &f.responses[0]
-		f.responses = f.responses[1:]
-		yield(resp, nil)
-	}
 }

@@ -11,11 +11,7 @@ import (
 
 func TestNewMemoryTool(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	// Pre-populate observations
 	observations := []*adapter.Observation{
@@ -60,11 +56,7 @@ func TestNewMemoryTool(t *testing.T) {
 
 func TestMemoryTool_Call_WithResults(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	// Pre-populate storage
 	obs := &adapter.Observation{
@@ -105,11 +97,7 @@ func TestMemoryTool_Call_WithResults(t *testing.T) {
 
 func TestMemoryTool_Call_NoResults(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	tool, err := NewMemoryTool(storage)
 	if err != nil {
@@ -134,11 +122,7 @@ func TestMemoryTool_Call_NoResults(t *testing.T) {
 
 func TestMemoryTool_Call_InvalidJSON(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	tool, err := NewMemoryTool(storage)
 	if err != nil {
@@ -153,11 +137,7 @@ func TestMemoryTool_Call_InvalidJSON(t *testing.T) {
 
 func TestMemoryTool_Call_EmptyQuery(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	obs := &adapter.Observation{
 		ID:        "obs-1",
@@ -189,11 +169,7 @@ func TestMemoryTool_Call_EmptyQuery(t *testing.T) {
 
 func TestMemoryTool_Call_WithMaxResults(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	for i := 0; i < 5; i++ {
 		obs := &adapter.Observation{

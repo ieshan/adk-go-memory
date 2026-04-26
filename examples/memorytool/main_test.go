@@ -25,11 +25,7 @@ func TestMemoryTool_ExplicitSearch(t *testing.T) {
 	ctx := context.Background()
 
 	// Seed storage with observations
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	obs := &adapter.Observation{
 		ID:        "obs-1",
@@ -140,11 +136,7 @@ func TestMemoryTool_NoResults(t *testing.T) {
 	ctx := context.Background()
 
 	// Empty storage
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	// Fake LLM calls tool, gets empty results
 	llm := &testutil.FakeLLM{
@@ -217,11 +209,7 @@ func TestMemoryTool_NoResults(t *testing.T) {
 
 // TestMemoryTool_ToolSchema verifies the tool has correct declaration.
 func TestMemoryTool_ToolSchema(t *testing.T) {
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	memTool, err := memory.NewMemoryTool(storage)
 	if err != nil {

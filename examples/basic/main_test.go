@@ -41,11 +41,7 @@ func TestBasicAgent_ExtractsObservations(t *testing.T) {
 	}
 
 	// Setup storage + deriver + service
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	deriver := memory.NewDeriver(memory.DeriverConfig{
 		LLM:     llm,
@@ -114,11 +110,7 @@ func TestBasicAgent_RecallsFromMemory(t *testing.T) {
 	ctx := context.Background()
 
 	// Seed storage with pre-existing memory
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	obs := &adapter.Observation{
 		ID:        "obs-1",
@@ -226,11 +218,7 @@ func TestBasicAgent_RecallsFromMemory(t *testing.T) {
 func TestBasicAgent_Deduplication(t *testing.T) {
 	ctx := context.Background()
 
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	// Pre-populate with observation
 	obs := &adapter.Observation{
@@ -310,7 +298,7 @@ func TestBasicAgent_EndToEnd(t *testing.T) {
 	}
 
 	// Setup
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	deriver := memory.NewDeriver(memory.DeriverConfig{LLM: llm, Storage: storage})

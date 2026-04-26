@@ -116,16 +116,6 @@ func (s *Service) SearchMemory(ctx context.Context, req *memory.SearchRequest) (
 	return &memory.SearchResponse{Memories: memories}, nil
 }
 
-// SetDeriver sets the deriver on the service.
-func (s *Service) SetDeriver(d *Deriver) {
-	s.deriver = d
-}
-
-// SetProvider sets the provider on the service.
-func (s *Service) SetProvider(p *Provider) {
-	s.provider = p
-}
-
 // Close releases resources held by the service.
 func (s *Service) Close() error {
 	if s.storage != nil {

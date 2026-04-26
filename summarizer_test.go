@@ -47,7 +47,7 @@ func TestSummarizer_ShouldSummarize(t *testing.T) {
 
 func TestSummarizer_Summarize(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	llm := &fakeLLM{
@@ -85,7 +85,7 @@ func TestSummarizer_Summarize(t *testing.T) {
 
 func TestSummarizer_Summarize_EmptyMessages(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	llm := &fakeLLM{}
@@ -101,7 +101,7 @@ func TestSummarizer_Summarize_EmptyMessages(t *testing.T) {
 }
 
 func TestSummarizer_DefaultIntervals(t *testing.T) {
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	llm := &fakeLLM{}
@@ -124,7 +124,7 @@ func TestSummarizer_DefaultIntervals(t *testing.T) {
 
 func TestSummarizer_StoreAndGetBothSummaries(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	llm := &fakeLLM{}
@@ -186,7 +186,7 @@ func TestSummarizer_StoreAndGetBothSummaries(t *testing.T) {
 
 func TestSummarizer_StoreAndGetSummaries_ContentWithoutSummaryWord(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	llm := &fakeLLM{}
@@ -227,7 +227,7 @@ func TestSummarizer_StoreAndGetSummaries_ContentWithoutSummaryWord(t *testing.T)
 
 func TestSummarizer_GetBothSummaries_NoSummaries(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	llm := &fakeLLM{}
@@ -250,7 +250,7 @@ func TestSummarizer_GetBothSummaries_NoSummaries(t *testing.T) {
 
 func TestSummarizer_Summarize_LLMError(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	llm := &fakeLLM{} // No responses configured -> returns error
@@ -271,7 +271,7 @@ func TestSummarizer_Summarize_LLMError(t *testing.T) {
 
 func TestSummarizer_Summarize_NilLLM(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	summarizer := NewSummarizer(SummarizerConfig{LLM: nil, Storage: storage})

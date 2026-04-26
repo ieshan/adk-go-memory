@@ -10,9 +10,6 @@ import (
 // Provider wires together all memory components for ADK-Go.
 type Provider struct {
 	storage       adapter.Storage
-	deriver       *Deriver
-	summarizer    *Summarizer
-	dialectic     *Dialectic
 	repManager    *RepresentationManager
 	peerCards     map[string]*PeerCard
 	embeddingFunc func(ctx context.Context, text string) ([]float32, error)
@@ -21,9 +18,6 @@ type Provider struct {
 // ProviderConfig configures the Provider.
 type ProviderConfig struct {
 	Storage       adapter.Storage
-	Deriver       *Deriver
-	Summarizer    *Summarizer
-	Dialectic     *Dialectic
 	EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)
 }
 
@@ -31,9 +25,6 @@ type ProviderConfig struct {
 func NewProvider(cfg ProviderConfig) *Provider {
 	p := &Provider{
 		storage:       cfg.Storage,
-		deriver:       cfg.Deriver,
-		summarizer:    cfg.Summarizer,
-		dialectic:     cfg.Dialectic,
 		peerCards:     make(map[string]*PeerCard),
 		embeddingFunc: cfg.EmbeddingFunc,
 	}

@@ -1,9 +1,11 @@
-package adapter
+package sqlite
 
 import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/ieshan/adk-go-memory/adapter"
 )
 
 func TestSQLiteStorage_VectorSearch(t *testing.T) {
@@ -16,11 +18,11 @@ func TestSQLiteStorage_VectorSearch(t *testing.T) {
 
 	// Create observations with embeddings
 	// "golang" and "programming" should be closer to "Go" query than "pizza"
-	observations := []*Observation{
+	observations := []*adapter.Observation{
 		{
 			ID:        "obs-go",
 			Content:   "user likes Go programming",
-			Level:     LevelExplicit,
+			Level:     adapter.LevelExplicit,
 			SessionID: "s1",
 			UserID:    "u1",
 			AppName:   "a1",
@@ -30,7 +32,7 @@ func TestSQLiteStorage_VectorSearch(t *testing.T) {
 		{
 			ID:        "obs-pizza",
 			Content:   "user enjoys pizza",
-			Level:     LevelExplicit,
+			Level:     adapter.LevelExplicit,
 			SessionID: "s1",
 			UserID:    "u1",
 			AppName:   "a1",
@@ -40,7 +42,7 @@ func TestSQLiteStorage_VectorSearch(t *testing.T) {
 		{
 			ID:        "obs-py",
 			Content:   "user knows Python",
-			Level:     LevelExplicit,
+			Level:     adapter.LevelExplicit,
 			SessionID: "s1",
 			UserID:    "u1",
 			AppName:   "a1",
@@ -57,11 +59,11 @@ func TestSQLiteStorage_VectorSearch(t *testing.T) {
 
 	// Search with embedding similar to Go/programming
 	queryEmbedding := fakeEmbedding("golang development")
-	results, err := storage.Search(ctx, &SearchOptions{
+	results, err := storage.Search(ctx, &adapter.SearchOptions{
 		Query:      "", // Text query not used in vector mode
 		Embedding:  queryEmbedding,
 		MaxResults: 3,
-		Mode:       SearchModeVector,
+		Mode:       adapter.SearchModeVector,
 		SessionID:  "s1",
 		UserID:     "u1",
 		AppName:    "a1",
@@ -108,11 +110,11 @@ func TestSQLiteStorage_HybridSearch(t *testing.T) {
 	defer storage.Close()
 
 	// Create observations - some match FTS better, some match vector better
-	observations := []*Observation{
+	observations := []*adapter.Observation{
 		{
 			ID:           "obs-go-text",
 			Content:      "Go is a programming language created at Google",
-			Level:        LevelExplicit,
+			Level:        adapter.LevelExplicit,
 			SessionID:    "s1",
 			UserID:       "u1",
 			AppName:      "a1",
@@ -123,7 +125,7 @@ func TestSQLiteStorage_HybridSearch(t *testing.T) {
 		{
 			ID:           "obs-go-vec",
 			Content:      "The user mentioned they use Golang for backend work",
-			Level:        LevelExplicit,
+			Level:        adapter.LevelExplicit,
 			SessionID:    "s1",
 			UserID:       "u1",
 			AppName:      "a1",
@@ -140,11 +142,11 @@ func TestSQLiteStorage_HybridSearch(t *testing.T) {
 	}
 
 	queryEmbedding := fakeEmbedding("golang programming")
-	results, err := storage.Search(ctx, &SearchOptions{
+	results, err := storage.Search(ctx, &adapter.SearchOptions{
 		Query:      "Go programming",
 		Embedding:  queryEmbedding,
 		MaxResults: 5,
-		Mode:       SearchModeHybrid,
+		Mode:       adapter.SearchModeHybrid,
 		SessionID:  "s1",
 		UserID:     "u1",
 		AppName:    "a1",
@@ -186,10 +188,10 @@ func TestSQLiteStorage_QueryMostDerived(t *testing.T) {
 	}
 	defer storage.Close()
 
-	observations := []*Observation{
-		{ID: "obs-1", Content: "low derived", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 1, CreatedAt: time.Now()},
-		{ID: "obs-2", Content: "high derived", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 10, CreatedAt: time.Now().Add(-1 * time.Hour)},
-		{ID: "obs-3", Content: "medium derived", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 5, CreatedAt: time.Now().Add(-2 * time.Hour)},
+	observations := []*adapter.Observation{
+		{ID: "obs-1", Content: "low derived", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 1, CreatedAt: time.Now()},
+		{ID: "obs-2", Content: "high derived", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 10, CreatedAt: time.Now().Add(-1 * time.Hour)},
+		{ID: "obs-3", Content: "medium derived", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 5, CreatedAt: time.Now().Add(-2 * time.Hour)},
 	}
 
 	for _, obs := range observations {
@@ -228,10 +230,10 @@ func TestSQLiteStorage_QueryRecent(t *testing.T) {
 	defer storage.Close()
 
 	now := time.Now()
-	observations := []*Observation{
-		{ID: "obs-old", Content: "old", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now.Add(-2 * time.Hour)},
-		{ID: "obs-new", Content: "new", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now},
-		{ID: "obs-middle", Content: "middle", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now.Add(-1 * time.Hour)},
+	observations := []*adapter.Observation{
+		{ID: "obs-old", Content: "old", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now.Add(-2 * time.Hour)},
+		{ID: "obs-new", Content: "new", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now},
+		{ID: "obs-middle", Content: "middle", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now.Add(-1 * time.Hour)},
 	}
 
 	for _, obs := range observations {
@@ -269,10 +271,10 @@ func TestSQLiteStorage_Forget_SyncsVirtualTables(t *testing.T) {
 	}
 	defer storage.Close()
 
-	obs := &Observation{
+	obs := &adapter.Observation{
 		ID:        "obs-delete",
 		Content:   "to be deleted",
-		Level:     LevelExplicit,
+		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
 		UserID:    "u1",
 		AppName:   "a1",
@@ -285,10 +287,10 @@ func TestSQLiteStorage_Forget_SyncsVirtualTables(t *testing.T) {
 	}
 
 	// Verify it exists in FTS
-	ftsResults, _ := storage.Search(ctx, &SearchOptions{
+	ftsResults, _ := storage.Search(ctx, &adapter.SearchOptions{
 		Query:      "deleted",
 		MaxResults: 1,
-		Mode:       SearchModeFTS,
+		Mode:       adapter.SearchModeFTS,
 	})
 	if len(ftsResults) == 0 {
 		t.Fatal("Expected to find observation in FTS before deletion")
@@ -306,10 +308,10 @@ func TestSQLiteStorage_Forget_SyncsVirtualTables(t *testing.T) {
 	}
 
 	// Verify it's gone from FTS
-	ftsResults, _ = storage.Search(ctx, &SearchOptions{
+	ftsResults, _ = storage.Search(ctx, &adapter.SearchOptions{
 		Query:      "deleted",
 		MaxResults: 1,
-		Mode:       SearchModeFTS,
+		Mode:       adapter.SearchModeFTS,
 	})
 	for _, r := range ftsResults {
 		if r.Observation.ID == "obs-delete" {
@@ -326,10 +328,10 @@ func TestSQLiteStorage_IncrementTimesDerived(t *testing.T) {
 	}
 	defer storage.Close()
 
-	obs := &Observation{
+	obs := &adapter.Observation{
 		ID:           "obs-increment",
 		Content:      "test content",
-		Level:        LevelExplicit,
+		Level:        adapter.LevelExplicit,
 		SessionID:    "s1",
 		UserID:       "u1",
 		AppName:      "a1",
@@ -366,10 +368,10 @@ func TestSQLiteStorage_StoreGetByID_RoundTrip(t *testing.T) {
 	defer storage.Close()
 
 	now := time.Now().Truncate(time.Second) // Truncate for SQLite DATETIME precision
-	obs := &Observation{
+	obs := &adapter.Observation{
 		ID:           "obs-full",
 		Content:      "full round trip test",
-		Level:        LevelDeductive,
+		Level:        adapter.LevelDeductive,
 		SessionID:    "s1",
 		UserID:       "u1",
 		AppName:      "a1",
@@ -425,10 +427,10 @@ func TestSQLiteStorage_StoreGetByID_NoTagsNoEmbedding(t *testing.T) {
 	}
 	defer storage.Close()
 
-	obs := &Observation{
+	obs := &adapter.Observation{
 		ID:        "obs-minimal",
 		Content:   "minimal observation",
-		Level:     LevelExplicit,
+		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
 		CreatedAt: time.Now(),
 	}
@@ -472,10 +474,10 @@ func TestSQLiteStorage_Store_DuplicateID(t *testing.T) {
 	}
 	defer storage.Close()
 
-	obs := &Observation{
+	obs := &adapter.Observation{
 		ID:        "obs-dup",
 		Content:   "first",
-		Level:     LevelExplicit,
+		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
 		CreatedAt: time.Now(),
 	}
@@ -484,10 +486,10 @@ func TestSQLiteStorage_Store_DuplicateID(t *testing.T) {
 	}
 
 	// Store again with same ID
-	dup := &Observation{
+	dup := &adapter.Observation{
 		ID:        "obs-dup",
 		Content:   "second",
-		Level:     LevelExplicit,
+		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
 		CreatedAt: time.Now(),
 	}
@@ -504,9 +506,9 @@ func TestSQLiteStorage_Search_DefaultModeIsHybrid(t *testing.T) {
 	}
 	defer storage.Close()
 
-	observations := []*Observation{
-		{ID: "obs-1", Content: "Go is a programming language", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", Embedding: fakeEmbedding("golang programming"), CreatedAt: time.Now()},
-		{ID: "obs-2", Content: "user enjoys hiking", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", Embedding: fakeEmbedding("outdoor hiking nature"), CreatedAt: time.Now()},
+	observations := []*adapter.Observation{
+		{ID: "obs-1", Content: "Go is a programming language", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", Embedding: fakeEmbedding("golang programming"), CreatedAt: time.Now()},
+		{ID: "obs-2", Content: "user enjoys hiking", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", Embedding: fakeEmbedding("outdoor hiking nature"), CreatedAt: time.Now()},
 	}
 	for _, obs := range observations {
 		if err := storage.Store(ctx, obs); err != nil {
@@ -516,7 +518,7 @@ func TestSQLiteStorage_Search_DefaultModeIsHybrid(t *testing.T) {
 
 	// Search with zero-value SearchMode and explicit MaxResults
 	// Should use hybrid search (the default), not vector-fallback
-	results, err := storage.Search(ctx, &SearchOptions{
+	results, err := storage.Search(ctx, &adapter.SearchOptions{
 		Query:      "Go programming",
 		MaxResults: 5,
 		// Mode not set — zero value should be Hybrid
@@ -553,10 +555,10 @@ func TestSQLiteStorage_SearchDoesNotMutateOpts(t *testing.T) {
 	}
 	defer storage.Close()
 
-	obs := &Observation{
+	obs := &adapter.Observation{
 		ID:        "obs-mutate",
 		Content:   "test mutation",
-		Level:     LevelExplicit,
+		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
 		CreatedAt: time.Now(),
 	}
@@ -564,10 +566,10 @@ func TestSQLiteStorage_SearchDoesNotMutateOpts(t *testing.T) {
 		t.Fatalf("Store() error = %v", err)
 	}
 
-	opts := &SearchOptions{
+	opts := &adapter.SearchOptions{
 		Query:      "test",
 		MaxResults: 0, // Should trigger default but NOT be mutated
-		Mode:       SearchModeFTS,
+		Mode:       adapter.SearchModeFTS,
 	}
 
 	_, err = storage.Search(ctx, opts)
@@ -590,10 +592,10 @@ func TestSQLiteStorage_Purge(t *testing.T) {
 
 	// Store observations in two sessions
 	for i, sessionID := range []string{"s1", "s2"} {
-		obs := &Observation{
+		obs := &adapter.Observation{
 			ID:        "obs-purge-" + sessionID,
 			Content:   "content for " + sessionID,
-			Level:     LevelExplicit,
+			Level:     adapter.LevelExplicit,
 			SessionID: sessionID,
 			UserID:    "u1",
 			AppName:   "a1",
@@ -633,10 +635,10 @@ func TestSQLiteStorage_FTSSearch(t *testing.T) {
 	}
 	defer storage.Close()
 
-	observations := []*Observation{
-		{ID: "obs-1", Content: "user enjoys hiking on weekends", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
-		{ID: "obs-2", Content: "user works as a software engineer", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
-		{ID: "obs-3", Content: "user likes pizza", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
+	observations := []*adapter.Observation{
+		{ID: "obs-1", Content: "user enjoys hiking on weekends", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
+		{ID: "obs-2", Content: "user works as a software engineer", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
+		{ID: "obs-3", Content: "user likes pizza", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
 	}
 
 	for _, obs := range observations {
@@ -645,10 +647,10 @@ func TestSQLiteStorage_FTSSearch(t *testing.T) {
 		}
 	}
 
-	results, err := storage.Search(ctx, &SearchOptions{
+	results, err := storage.Search(ctx, &adapter.SearchOptions{
 		Query:      "hiking weekends",
 		MaxResults: 5,
-		Mode:       SearchModeFTS,
+		Mode:       adapter.SearchModeFTS,
 	})
 	if err != nil {
 		t.Fatalf("Search(FTS) error = %v", err)
@@ -679,10 +681,10 @@ func TestSQLiteStorage_FTSSearch_EmptyQuery(t *testing.T) {
 	}
 	defer storage.Close()
 
-	obs := &Observation{
+	obs := &adapter.Observation{
 		ID:        "obs-empty-q",
 		Content:   "some content",
-		Level:     LevelExplicit,
+		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
 		CreatedAt: time.Now(),
 	}
@@ -691,10 +693,10 @@ func TestSQLiteStorage_FTSSearch_EmptyQuery(t *testing.T) {
 	}
 
 	// Empty query should fall back to recent observations
-	results, err := storage.Search(ctx, &SearchOptions{
+	results, err := storage.Search(ctx, &adapter.SearchOptions{
 		Query:      "",
 		MaxResults: 5,
-		Mode:       SearchModeFTS,
+		Mode:       adapter.SearchModeFTS,
 	})
 	if err != nil {
 		t.Fatalf("Search(FTS, empty query) error = %v", err)
@@ -712,10 +714,10 @@ func TestSQLiteStorage_Search_EmptyResults(t *testing.T) {
 	}
 	defer storage.Close()
 
-	results, err := storage.Search(ctx, &SearchOptions{
+	results, err := storage.Search(ctx, &adapter.SearchOptions{
 		Query:      "nonexistent",
 		MaxResults: 5,
-		Mode:       SearchModeFTS,
+		Mode:       adapter.SearchModeFTS,
 	})
 	if err != nil {
 		t.Fatalf("Search() error = %v", err)
@@ -761,9 +763,9 @@ func TestSQLiteStorage_Search_FilterBySessionID(t *testing.T) {
 	}
 	defer storage.Close()
 
-	observations := []*Observation{
-		{ID: "obs-s1", Content: "session one fact", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
-		{ID: "obs-s2", Content: "session two fact", Level: LevelExplicit, SessionID: "s2", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
+	observations := []*adapter.Observation{
+		{ID: "obs-s1", Content: "session one fact", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
+		{ID: "obs-s2", Content: "session two fact", Level: adapter.LevelExplicit, SessionID: "s2", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
 	}
 
 	for _, obs := range observations {
@@ -773,10 +775,10 @@ func TestSQLiteStorage_Search_FilterBySessionID(t *testing.T) {
 	}
 
 	// Search scoped to s1 should NOT return s2 observations
-	results, err := storage.Search(ctx, &SearchOptions{
+	results, err := storage.Search(ctx, &adapter.SearchOptions{
 		Query:      "fact",
 		MaxResults: 10,
-		Mode:       SearchModeFTS,
+		Mode:       adapter.SearchModeFTS,
 		SessionID:  "s1",
 	})
 	if err != nil {
@@ -805,9 +807,9 @@ func TestSQLiteStorage_Search_FilterByUserID(t *testing.T) {
 	}
 	defer storage.Close()
 
-	observations := []*Observation{
-		{ID: "obs-u1", Content: "user one fact", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
-		{ID: "obs-u2", Content: "user two fact", Level: LevelExplicit, SessionID: "s1", UserID: "u2", AppName: "a1", CreatedAt: time.Now()},
+	observations := []*adapter.Observation{
+		{ID: "obs-u1", Content: "user one fact", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
+		{ID: "obs-u2", Content: "user two fact", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u2", AppName: "a1", CreatedAt: time.Now()},
 	}
 
 	for _, obs := range observations {
@@ -816,10 +818,10 @@ func TestSQLiteStorage_Search_FilterByUserID(t *testing.T) {
 		}
 	}
 
-	results, err := storage.Search(ctx, &SearchOptions{
+	results, err := storage.Search(ctx, &adapter.SearchOptions{
 		Query:      "fact",
 		MaxResults: 10,
-		Mode:       SearchModeFTS,
+		Mode:       adapter.SearchModeFTS,
 		UserID:     "u1",
 	})
 	if err != nil {
@@ -841,9 +843,9 @@ func TestSQLiteStorage_Search_FilterByAppName(t *testing.T) {
 	}
 	defer storage.Close()
 
-	observations := []*Observation{
-		{ID: "obs-a1", Content: "app one fact", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "app1", CreatedAt: time.Now()},
-		{ID: "obs-a2", Content: "app two fact", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "app2", CreatedAt: time.Now()},
+	observations := []*adapter.Observation{
+		{ID: "obs-a1", Content: "app one fact", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "app1", CreatedAt: time.Now()},
+		{ID: "obs-a2", Content: "app two fact", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "app2", CreatedAt: time.Now()},
 	}
 
 	for _, obs := range observations {
@@ -852,10 +854,10 @@ func TestSQLiteStorage_Search_FilterByAppName(t *testing.T) {
 		}
 	}
 
-	results, err := storage.Search(ctx, &SearchOptions{
+	results, err := storage.Search(ctx, &adapter.SearchOptions{
 		Query:      "fact",
 		MaxResults: 10,
-		Mode:       SearchModeFTS,
+		Mode:       adapter.SearchModeFTS,
 		AppName:    "app1",
 	})
 	if err != nil {
@@ -877,10 +879,10 @@ func TestSQLiteStorage_Purge_SyncsVirtualTables(t *testing.T) {
 	}
 	defer storage.Close()
 
-	obs := &Observation{
+	obs := &adapter.Observation{
 		ID:        "obs-purge-fts",
 		Content:   "unique content for purge test",
-		Level:     LevelExplicit,
+		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
 		UserID:    "u1",
 		AppName:   "a1",
@@ -892,10 +894,10 @@ func TestSQLiteStorage_Purge_SyncsVirtualTables(t *testing.T) {
 	}
 
 	// Verify it exists in FTS
-	ftsResults, _ := storage.Search(ctx, &SearchOptions{
+	ftsResults, _ := storage.Search(ctx, &adapter.SearchOptions{
 		Query:      "unique content purge",
 		MaxResults: 1,
-		Mode:       SearchModeFTS,
+		Mode:       adapter.SearchModeFTS,
 	})
 	if len(ftsResults) == 0 {
 		t.Fatal("Expected to find observation in FTS before purge")
@@ -907,10 +909,10 @@ func TestSQLiteStorage_Purge_SyncsVirtualTables(t *testing.T) {
 	}
 
 	// Verify it's gone from FTS
-	ftsResults, _ = storage.Search(ctx, &SearchOptions{
+	ftsResults, _ = storage.Search(ctx, &adapter.SearchOptions{
 		Query:      "unique content purge",
 		MaxResults: 1,
-		Mode:       SearchModeFTS,
+		Mode:       adapter.SearchModeFTS,
 	})
 	for _, r := range ftsResults {
 		if r.Observation.ID == "obs-purge-fts" {
@@ -927,10 +929,10 @@ func TestSQLiteStorage_Forget_SyncsVecTable(t *testing.T) {
 	}
 	defer storage.Close()
 
-	obs := &Observation{
+	obs := &adapter.Observation{
 		ID:        "obs-del-vec",
 		Content:   "to be deleted from vec",
-		Level:     LevelExplicit,
+		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
 		UserID:    "u1",
 		AppName:   "a1",
@@ -942,10 +944,10 @@ func TestSQLiteStorage_Forget_SyncsVecTable(t *testing.T) {
 	}
 
 	// Verify it exists in vector search
-	vecResults, err := storage.Search(ctx, &SearchOptions{
+	vecResults, err := storage.Search(ctx, &adapter.SearchOptions{
 		Embedding:  fakeEmbedding("test content for vec delete"),
 		MaxResults: 1,
-		Mode:       SearchModeVector,
+		Mode:       adapter.SearchModeVector,
 		SessionID:  "s1",
 		UserID:     "u1",
 		AppName:    "a1",
@@ -969,10 +971,10 @@ func TestSQLiteStorage_Forget_SyncsVecTable(t *testing.T) {
 	}
 
 	// Verify vector search no longer returns it
-	vecResults, err = storage.Search(ctx, &SearchOptions{
+	vecResults, err = storage.Search(ctx, &adapter.SearchOptions{
 		Embedding:  fakeEmbedding("test content for vec delete"),
 		MaxResults: 10,
-		Mode:       SearchModeVector,
+		Mode:       adapter.SearchModeVector,
 		SessionID:  "s1",
 		UserID:     "u1",
 		AppName:    "a1",
@@ -995,10 +997,10 @@ func TestSQLiteStorage_Purge_UnknownFilterKey(t *testing.T) {
 	}
 	defer storage.Close()
 
-	obs := &Observation{
+	obs := &adapter.Observation{
 		ID:        "obs-unknown-filter",
 		Content:   "test content",
-		Level:     LevelExplicit,
+		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
 		UserID:    "u1",
 		AppName:   "a1",
@@ -1014,7 +1016,7 @@ func TestSQLiteStorage_Purge_UnknownFilterKey(t *testing.T) {
 		t.Error("Expected error for Purge with unrecognized filter keys")
 	}
 
-	// Observation should still exist
+	// adapter.Observation should still exist
 	result, err := storage.GetByID(ctx, "obs-unknown-filter")
 	if err != nil {
 		t.Fatalf("GetByID() error = %v, observation should still exist", err)
@@ -1032,10 +1034,10 @@ func TestSQLiteStorage_Purge_MixedFilterKeys(t *testing.T) {
 	}
 	defer storage.Close()
 
-	obs := &Observation{
+	obs := &adapter.Observation{
 		ID:        "obs-mixed-filter",
 		Content:   "test content",
-		Level:     LevelExplicit,
+		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
 		UserID:    "u1",
 		AppName:   "a1",
@@ -1051,7 +1053,7 @@ func TestSQLiteStorage_Purge_MixedFilterKeys(t *testing.T) {
 		t.Error("Expected error for Purge with mixed recognized/unrecognized filter keys")
 	}
 
-	// Observation should still exist
+	// adapter.Observation should still exist
 	result, err := storage.GetByID(ctx, "obs-mixed-filter")
 	if err != nil {
 		t.Fatalf("GetByID() error = %v, observation should still exist", err)
@@ -1069,10 +1071,10 @@ func TestSQLiteStorage_Purge_EmptyFilter(t *testing.T) {
 	}
 	defer storage.Close()
 
-	obs := &Observation{
+	obs := &adapter.Observation{
 		ID:        "obs-empty-filter",
 		Content:   "test content",
-		Level:     LevelExplicit,
+		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
 		UserID:    "u1",
 		AppName:   "a1",
@@ -1087,7 +1089,7 @@ func TestSQLiteStorage_Purge_EmptyFilter(t *testing.T) {
 		t.Error("Expected error for Purge with empty filter")
 	}
 
-	// Observation should still exist
+	// adapter.Observation should still exist
 	result, err := storage.GetByID(ctx, "obs-empty-filter")
 	if err != nil {
 		t.Fatalf("GetByID() error = %v, observation should still exist", err)
@@ -1105,10 +1107,10 @@ func TestSQLiteStorage_Purge_NoMatchingRows(t *testing.T) {
 	}
 	defer storage.Close()
 
-	obs := &Observation{
+	obs := &adapter.Observation{
 		ID:        "obs-no-match",
 		Content:   "test content",
-		Level:     LevelExplicit,
+		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
 		UserID:    "u1",
 		AppName:   "a1",

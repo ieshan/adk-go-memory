@@ -70,42 +70,6 @@ func (pc *PeerCard) ReplaceFacts(facts []PeerFact) {
 	pc.facts = facts
 }
 
-// Prune removes facts with scores below the threshold.
-func (pc *PeerCard) Prune(threshold float64) {
-	var pruned []PeerFact
-	for _, f := range pc.facts {
-		if f.Score >= threshold {
-			pruned = append(pruned, f)
-		}
-	}
-	pc.facts = pruned
-}
-
-// ByType returns facts filtered by observation level.
-func (pc *PeerCard) ByType(level adapter.ObservationLevel) []PeerFact {
-	var filtered []PeerFact
-	for _, f := range pc.facts {
-		if f.Type == level {
-			filtered = append(filtered, f)
-		}
-	}
-	return filtered
-}
-
-// ByTag returns facts that have the given tag.
-func (pc *PeerCard) ByTag(tag string) []PeerFact {
-	var filtered []PeerFact
-	for _, f := range pc.facts {
-		for _, t := range f.Tags {
-			if t == tag {
-				filtered = append(filtered, f)
-				break
-			}
-		}
-	}
-	return filtered
-}
-
 // Render returns a formatted string representation of the peer card.
 func (pc *PeerCard) Render() string {
 	if len(pc.facts) == 0 {

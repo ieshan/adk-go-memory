@@ -24,6 +24,7 @@ import (
 
 	memory "github.com/ieshan/adk-go-memory"
 	"github.com/ieshan/adk-go-memory/adapter"
+	"github.com/ieshan/adk-go-memory/adapter/sqlite"
 	adkagent "google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/model"
@@ -35,11 +36,10 @@ func main() {
 	ctx := context.Background()
 
 	// Setup in-memory storage and memory service
-	storage, err := adapter.InMemory()
+	storage, err := sqlite.InMemory()
 	if err != nil {
-		log.Fatalf("Failed to create storage: %v", err)
+		log.Fatalf("Failed to create SQLite storage: %v", err)
 	}
-	defer storage.Close()
 
 	// For production, use a real LLM. For this example, we'll need an LLM.
 	modelLLM := getLLM()

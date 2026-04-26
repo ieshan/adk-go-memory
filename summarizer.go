@@ -37,11 +37,10 @@ type Summarizer struct {
 
 // Summary represents a session summary.
 type Summary struct {
-	Type       SummaryType
-	Content    string
-	MessageID  string
-	TokenCount int
-	CreatedAt  time.Time
+	Type      SummaryType
+	Content   string
+	MessageID string
+	CreatedAt time.Time
 }
 
 const summarizerSystemPrompt = `You are a summarization agent. Create a concise summary of the conversation.

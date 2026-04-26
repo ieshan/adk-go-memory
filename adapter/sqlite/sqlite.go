@@ -1,4 +1,5 @@
-package adapter
+// Package sqlite provides SQLite storage implementation for the memory layer.
+package sqlite
 
 import (
 	"context"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	sqlitevec "github.com/asg017/sqlite-vec-go-bindings/cgo"
+	"github.com/ieshan/adk-go-memory/adapter"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -16,6 +18,9 @@ func init() {
 	// Enable sqlite-vec for all SQLite connections
 	sqlitevec.Auto()
 }
+
+// Compile-time interface compliance check.
+var _ adapter.Storage = (*SQLiteStorage)(nil)
 
 // SQLiteStorage implements Storage using SQLite with sqlite-vec and FTS5.
 type SQLiteStorage struct {
@@ -111,7 +116,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS observations_fts USING fts5(
 // The insert into the main table, FTS5, and vec0 virtual tables is wrapped
 // in a transaction so that a partial failure does not leave the database
 // in an inconsistent state.
-func (s *SQLiteStorage) Store(ctx context.Context, obs *Observation) error {
+func (s *SQLiteStorage) Store(ctx context.Context, obs *adapter.Observation) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("sqlite: store: begin tx: %w", err)
@@ -170,8 +175,8 @@ func (s *SQLiteStorage) Store(ctx context.Context, obs *Observation) error {
 }
 
 // GetByID retrieves an observation by its ID.
-func (s *SQLiteStorage) GetByID(ctx context.Context, id string) (*Observation, error) {
-	var obs Observation
+func (s *SQLiteStorage) GetByID(ctx context.Context, id string) (*adapter.Observation, error) {
+	var obs adapter.Observation
 	var tagsJSON string
 	var embeddingBlob []byte
 
@@ -203,7 +208,7 @@ func (s *SQLiteStorage) GetByID(ctx context.Context, id string) (*Observation, e
 }
 
 // Search finds observations matching the given options.
-func (s *SQLiteStorage) Search(ctx context.Context, opts *SearchOptions) ([]SearchResult, error) {
+func (s *SQLiteStorage) Search(ctx context.Context, opts *adapter.SearchOptions) ([]adapter.SearchResult, error) {
 	maxResults := opts.MaxResults
 	if maxResults == 0 {
 		maxResults = 10
@@ -214,18 +219,18 @@ func (s *SQLiteStorage) Search(ctx context.Context, opts *SearchOptions) ([]Sear
 	o.MaxResults = maxResults
 
 	switch o.Mode {
-	case SearchModeVector:
+	case adapter.SearchModeVector:
 		return s.searchVector(ctx, &o)
-	case SearchModeFTS:
+	case adapter.SearchModeFTS:
 		return s.searchFTS(ctx, &o)
-	case SearchModeHybrid:
+	case adapter.SearchModeHybrid:
 		return s.searchHybrid(ctx, &o)
 	default:
 		return s.searchHybrid(ctx, &o)
 	}
 }
 
-func (s *SQLiteStorage) searchVector(ctx context.Context, opts *SearchOptions) ([]SearchResult, error) {
+func (s *SQLiteStorage) searchVector(ctx context.Context, opts *adapter.SearchOptions) ([]adapter.SearchResult, error) {
 	if len(opts.Embedding) == 0 {
 		// No embedding provided - fall back to recent observations
 		return s.queryRecentAsSearchResults(ctx, opts)
@@ -275,7 +280,7 @@ func (s *SQLiteStorage) searchVector(ctx context.Context, opts *SearchOptions) (
 }
 
 // queryRecentAsSearchResults returns recent observations when no embedding provided
-func (s *SQLiteStorage) queryRecentAsSearchResults(ctx context.Context, opts *SearchOptions) ([]SearchResult, error) {
+func (s *SQLiteStorage) queryRecentAsSearchResults(ctx context.Context, opts *adapter.SearchOptions) ([]adapter.SearchResult, error) {
 	whereClause, args := s.buildWhereClause(opts)
 	query := fmt.Sprintf(
 		`SELECT id, content, level, session_id, user_id, app_name, tags, times_derived, created_at, embedding
@@ -333,7 +338,7 @@ func sanitizeFTS5Query(query string) string {
 	return strings.Join(tokens, " ")
 }
 
-func (s *SQLiteStorage) searchFTS(ctx context.Context, opts *SearchOptions) ([]SearchResult, error) {
+func (s *SQLiteStorage) searchFTS(ctx context.Context, opts *adapter.SearchOptions) ([]adapter.SearchResult, error) {
 	if opts.Query == "" {
 		// No query - return recent observations
 		return s.queryRecentAsSearchResults(ctx, opts)
@@ -383,14 +388,14 @@ func (s *SQLiteStorage) searchFTS(ctx context.Context, opts *SearchOptions) ([]S
 	return s.scanResultsWithDistance(rows, "fts")
 }
 
-func (s *SQLiteStorage) searchHybrid(ctx context.Context, opts *SearchOptions) ([]SearchResult, error) {
+func (s *SQLiteStorage) searchHybrid(ctx context.Context, opts *adapter.SearchOptions) ([]adapter.SearchResult, error) {
 	// Get results from both methods
 	vectorOpts := *opts
-	vectorOpts.Mode = SearchModeVector
+	vectorOpts.Mode = adapter.SearchModeVector
 	vectorOpts.MaxResults = opts.MaxResults * 2
 
 	ftsOpts := *opts
-	ftsOpts.Mode = SearchModeFTS
+	ftsOpts.Mode = adapter.SearchModeFTS
 	ftsOpts.MaxResults = opts.MaxResults * 2
 
 	vectorResults, err := s.searchVector(ctx, &vectorOpts)
@@ -429,13 +434,13 @@ func (s *SQLiteStorage) searchHybrid(ctx context.Context, opts *SearchOptions) (
 
 	// Calculate RRF scores
 	type rrfItem struct {
-		obs   Observation
+		obs   adapter.Observation
 		score float64
 	}
 	rrfItems := make([]rrfItem, 0, len(allIDs))
 
 	for id := range allIDs {
-		var obs *Observation
+		var obs *adapter.Observation
 		for _, r := range vectorResults {
 			if r.Observation.ID == id {
 				obs = &r.Observation
@@ -480,9 +485,9 @@ func (s *SQLiteStorage) searchHybrid(ctx context.Context, opts *SearchOptions) (
 		limit = len(rrfItems)
 	}
 
-	results := make([]SearchResult, limit)
+	results := make([]adapter.SearchResult, limit)
 	for i := 0; i < limit; i++ {
-		results[i] = SearchResult{
+		results[i] = adapter.SearchResult{
 			Observation: rrfItems[i].obs,
 			Score:       rrfItems[i].score,
 			Source:      "rrf",
@@ -493,10 +498,10 @@ func (s *SQLiteStorage) searchHybrid(ctx context.Context, opts *SearchOptions) (
 }
 
 // scanResults scans rows into SearchResult structs.
-func (s *SQLiteStorage) scanResults(rows *sql.Rows, source string) ([]SearchResult, error) {
-	var results []SearchResult
+func (s *SQLiteStorage) scanResults(rows *sql.Rows, source string) ([]adapter.SearchResult, error) {
+	var results []adapter.SearchResult
 	for rows.Next() {
-		var obs Observation
+		var obs adapter.Observation
 		var tagsJSON string
 		var embeddingBlob []byte
 
@@ -518,7 +523,7 @@ func (s *SQLiteStorage) scanResults(rows *sql.Rows, source string) ([]SearchResu
 			}
 		}
 
-		results = append(results, SearchResult{
+		results = append(results, adapter.SearchResult{
 			Observation: obs,
 			Score:       obs.Score(),
 			Source:      source,
@@ -529,10 +534,10 @@ func (s *SQLiteStorage) scanResults(rows *sql.Rows, source string) ([]SearchResu
 }
 
 // scanResultsWithDistance scans rows that include a distance/score column
-func (s *SQLiteStorage) scanResultsWithDistance(rows *sql.Rows, source string) ([]SearchResult, error) {
-	var results []SearchResult
+func (s *SQLiteStorage) scanResultsWithDistance(rows *sql.Rows, source string) ([]adapter.SearchResult, error) {
+	var results []adapter.SearchResult
 	for rows.Next() {
-		var obs Observation
+		var obs adapter.Observation
 		var tagsJSON string
 		var embeddingBlob []byte
 		var distance float64
@@ -563,7 +568,7 @@ func (s *SQLiteStorage) scanResultsWithDistance(rows *sql.Rows, source string) (
 		// For bm25: lower is better, but values can be negative
 		score := 1.0 / (1.0 + math.Abs(distance))
 
-		results = append(results, SearchResult{
+		results = append(results, adapter.SearchResult{
 			Observation: obs,
 			Score:       score,
 			Source:      source,
@@ -574,7 +579,7 @@ func (s *SQLiteStorage) scanResultsWithDistance(rows *sql.Rows, source string) (
 }
 
 // buildWhereClause creates WHERE clause and args for filtered queries
-func (s *SQLiteStorage) buildWhereClause(opts *SearchOptions) (string, []interface{}) {
+func (s *SQLiteStorage) buildWhereClause(opts *adapter.SearchOptions) (string, []interface{}) {
 	conditions := []string{"1=1"}
 	args := []interface{}{}
 
@@ -752,8 +757,8 @@ func (s *SQLiteStorage) Close() error {
 
 // QueryMostDerived returns observations sorted by times_derived DESC.
 // Most-derived facts (referenced multiple times) are returned first.
-func (s *SQLiteStorage) QueryMostDerived(ctx context.Context, sessionID, userID, appName string, limit int) ([]Observation, error) {
-	whereClause, args := s.buildWhereClause(&SearchOptions{
+func (s *SQLiteStorage) QueryMostDerived(ctx context.Context, sessionID, userID, appName string, limit int) ([]adapter.Observation, error) {
+	whereClause, args := s.buildWhereClause(&adapter.SearchOptions{
 		SessionID: sessionID,
 		UserID:    userID,
 		AppName:   appName,
@@ -778,8 +783,8 @@ func (s *SQLiteStorage) QueryMostDerived(ctx context.Context, sessionID, userID,
 
 // QueryRecent returns observations sorted by created_at DESC.
 // Most recent observations are returned first.
-func (s *SQLiteStorage) QueryRecent(ctx context.Context, sessionID, userID, appName string, limit int) ([]Observation, error) {
-	whereClause, args := s.buildWhereClause(&SearchOptions{
+func (s *SQLiteStorage) QueryRecent(ctx context.Context, sessionID, userID, appName string, limit int) ([]adapter.Observation, error) {
+	whereClause, args := s.buildWhereClause(&adapter.SearchOptions{
 		SessionID: sessionID,
 		UserID:    userID,
 		AppName:   appName,
@@ -803,10 +808,10 @@ func (s *SQLiteStorage) QueryRecent(ctx context.Context, sessionID, userID, appN
 }
 
 // scanObservations scans rows into Observation structs (without SearchResult wrapper)
-func (s *SQLiteStorage) scanObservations(rows *sql.Rows) ([]Observation, error) {
-	var observations []Observation
+func (s *SQLiteStorage) scanObservations(rows *sql.Rows) ([]adapter.Observation, error) {
+	var observations []adapter.Observation
 	for rows.Next() {
-		var obs Observation
+		var obs adapter.Observation
 		var tagsJSON string
 		var embeddingBlob []byte
 

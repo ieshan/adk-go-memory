@@ -1,4 +1,4 @@
-package adapter
+package sqlite
 
 import (
 	"crypto/sha256"

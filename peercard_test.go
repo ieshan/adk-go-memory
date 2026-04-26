@@ -61,55 +61,6 @@ func TestPeerCard_ReplaceFacts(t *testing.T) {
 	}
 }
 
-func TestPeerCard_Prune(t *testing.T) {
-	pc := NewPeerCard("user-1")
-	pc.AddFact(PeerFact{Content: "high score", Score: 0.9, Type: adapter.LevelExplicit})
-	pc.AddFact(PeerFact{Content: "low score", Score: 0.2, Type: adapter.LevelContradiction})
-	pc.AddFact(PeerFact{Content: "medium score", Score: 0.5, Type: adapter.LevelExplicit})
-
-	pc.Prune(0.4)
-
-	facts := pc.Facts()
-	if len(facts) != 2 {
-		t.Errorf("len(Facts()) = %d, want 2", len(facts))
-	}
-
-	for _, f := range facts {
-		if f.Score < 0.4 {
-			t.Errorf("Fact with score %v should have been pruned", f.Score)
-		}
-	}
-}
-
-func TestPeerCard_ByType(t *testing.T) {
-	pc := NewPeerCard("user-1")
-	pc.AddFact(PeerFact{Content: "explicit fact", Score: 0.9, Type: adapter.LevelExplicit})
-	pc.AddFact(PeerFact{Content: "deductive fact", Score: 0.8, Type: adapter.LevelDeductive})
-	pc.AddFact(PeerFact{Content: "another explicit", Score: 0.7, Type: adapter.LevelExplicit})
-
-	explicitFacts := pc.ByType(adapter.LevelExplicit)
-	if len(explicitFacts) != 2 {
-		t.Errorf("len(ByType(explicit)) = %d, want 2", len(explicitFacts))
-	}
-
-	deductiveFacts := pc.ByType(adapter.LevelDeductive)
-	if len(deductiveFacts) != 1 {
-		t.Errorf("len(ByType(deductive)) = %d, want 1", len(deductiveFacts))
-	}
-}
-
-func TestPeerCard_ByTag(t *testing.T) {
-	pc := NewPeerCard("user-1")
-	pc.AddFact(PeerFact{Content: "fact 1", Score: 0.9, Type: adapter.LevelExplicit, Tags: []string{"work", "coding"}})
-	pc.AddFact(PeerFact{Content: "fact 2", Score: 0.8, Type: adapter.LevelExplicit, Tags: []string{"personal"}})
-	pc.AddFact(PeerFact{Content: "fact 3", Score: 0.7, Type: adapter.LevelExplicit, Tags: []string{"work"}})
-
-	workFacts := pc.ByTag("work")
-	if len(workFacts) != 2 {
-		t.Errorf("len(ByTag(work)) = %d, want 2", len(workFacts))
-	}
-}
-
 func TestPeerCard_Render(t *testing.T) {
 	pc := NewPeerCard("alice")
 	pc.AddFact(PeerFact{Content: "prefers coffee", Score: 0.9, Type: adapter.LevelExplicit})
@@ -236,32 +187,6 @@ func TestPeerCard_Render_DoesNotMutateFacts(t *testing.T) {
 				i, factsAfter[i].Content, factsAfter[i].Score,
 				factsBefore[i].Content, factsBefore[i].Score)
 		}
-	}
-}
-
-func TestPeerCard_Prune_AllBelowThreshold(t *testing.T) {
-	pc := NewPeerCard("user-1")
-	pc.AddFact(PeerFact{Content: "low 1", Score: 0.1, Type: adapter.LevelContradiction})
-	pc.AddFact(PeerFact{Content: "low 2", Score: 0.2, Type: adapter.LevelContradiction})
-
-	pc.Prune(0.5)
-
-	facts := pc.Facts()
-	if len(facts) != 0 {
-		t.Errorf("Expected 0 facts after pruning all, got %d", len(facts))
-	}
-}
-
-func TestPeerCard_Prune_NoneBelowThreshold(t *testing.T) {
-	pc := NewPeerCard("user-1")
-	pc.AddFact(PeerFact{Content: "high 1", Score: 0.9, Type: adapter.LevelExplicit})
-	pc.AddFact(PeerFact{Content: "high 2", Score: 0.8, Type: adapter.LevelExplicit})
-
-	pc.Prune(0.5)
-
-	facts := pc.Facts()
-	if len(facts) != 2 {
-		t.Errorf("Expected 2 facts after pruning none, got %d", len(facts))
 	}
 }
 

@@ -2,6 +2,8 @@ package memory
 
 import (
 	"context"
+	"fmt"
+	"iter"
 	"strings"
 	"testing"
 	"time"
@@ -13,11 +15,7 @@ import (
 
 func TestDeriver_ExtractsObservations(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	llm := &fakeLLM{
 		responses: []model.LLMResponse{{
@@ -34,7 +32,7 @@ func TestDeriver_ExtractsObservations(t *testing.T) {
 		{Content: &genai.Content{Role: "user", Parts: []*genai.Part{{Text: "I'm 25 and I love Go"}}}, At: time.Now()},
 	}
 
-	err = deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
+	err := deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
 	if err != nil {
 		t.Fatalf("Derive() error = %v", err)
 	}
@@ -56,11 +54,7 @@ func TestDeriver_ExtractsObservations(t *testing.T) {
 
 func TestDeriver_HandlesEmptyResponse(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	llm := &fakeLLM{
 		responses: []model.LLMResponse{{
@@ -73,7 +67,7 @@ func TestDeriver_HandlesEmptyResponse(t *testing.T) {
 	}
 
 	deriver := NewDeriver(DeriverConfig{LLM: llm, Storage: storage})
-	err = deriver.Derive(ctx, []TimestampedMessage{}, "sess-1", "u1", "app1")
+	err := deriver.Derive(ctx, []TimestampedMessage{}, "sess-1", "u1", "app1")
 	if err != nil {
 		t.Fatalf("Derive() error = %v", err)
 	}
@@ -86,11 +80,7 @@ func TestDeriver_HandlesEmptyResponse(t *testing.T) {
 
 func TestDeriver_Deduplication(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	// Pre-populate with existing observation
 	existing := &adapter.Observation{
@@ -122,7 +112,7 @@ func TestDeriver_Deduplication(t *testing.T) {
 		{Content: &genai.Content{Role: "user", Parts: []*genai.Part{{Text: "I like Go"}}}, At: time.Now()},
 	}
 
-	err = deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
+	err := deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
 	if err != nil {
 		t.Fatalf("Derive() error = %v", err)
 	}
@@ -140,11 +130,7 @@ func TestDeriver_Deduplication(t *testing.T) {
 
 func TestDeriver_GeneratesUniqueIDs(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	llm := &fakeLLM{
 		responses: []model.LLMResponse{{
@@ -161,7 +147,7 @@ func TestDeriver_GeneratesUniqueIDs(t *testing.T) {
 		{Content: &genai.Content{Role: "user", Parts: []*genai.Part{{Text: "test"}}}, At: time.Now()},
 	}
 
-	err = deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
+	err := deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
 	if err != nil {
 		t.Fatalf("Derive() error = %v", err)
 	}
@@ -193,11 +179,7 @@ func TestDeriver_GeneratesUniqueIDs(t *testing.T) {
 
 func TestDeriver_SetsSessionID(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	llm := &fakeLLM{
 		responses: []model.LLMResponse{{
@@ -214,7 +196,7 @@ func TestDeriver_SetsSessionID(t *testing.T) {
 		{Content: &genai.Content{Role: "user", Parts: []*genai.Part{{Text: "test"}}}, At: time.Now()},
 	}
 
-	err = deriver.Derive(ctx, msgs, "custom-session-id", "u1", "app1")
+	err := deriver.Derive(ctx, msgs, "custom-session-id", "u1", "app1")
 	if err != nil {
 		t.Fatalf("Derive() error = %v", err)
 	}
@@ -239,11 +221,7 @@ func TestDeriver_SetsSessionID(t *testing.T) {
 
 func TestDeriver_SetsUserIDAndAppName(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	llm := &fakeLLM{
 		responses: []model.LLMResponse{{
@@ -260,7 +238,7 @@ func TestDeriver_SetsUserIDAndAppName(t *testing.T) {
 		{Content: &genai.Content{Role: "user", Parts: []*genai.Part{{Text: "test"}}}, At: time.Now()},
 	}
 
-	err = deriver.Derive(ctx, msgs, "sess-1", "user-42", "my-app")
+	err := deriver.Derive(ctx, msgs, "sess-1", "user-42", "my-app")
 	if err != nil {
 		t.Fatalf("Derive() error = %v", err)
 	}
@@ -288,11 +266,7 @@ func TestDeriver_SetsUserIDAndAppName(t *testing.T) {
 
 func TestDeriver_LLMError(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	llm := &fakeLLM{} // No responses configured -> returns error
 
@@ -301,7 +275,7 @@ func TestDeriver_LLMError(t *testing.T) {
 		{Content: &genai.Content{Role: "user", Parts: []*genai.Part{{Text: "test"}}}, At: time.Now()},
 	}
 
-	err = deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
+	err := deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
 	if err == nil {
 		t.Error("Expected error when LLM has no responses")
 	}
@@ -309,7 +283,7 @@ func TestDeriver_LLMError(t *testing.T) {
 
 func TestDeriver_NilLLM(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	deriver := NewDeriver(DeriverConfig{LLM: nil, Storage: storage})
@@ -328,11 +302,7 @@ func TestDeriver_NilLLM(t *testing.T) {
 
 func TestDeriver_MalformedJSON(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	llm := &fakeLLM{
 		responses: []model.LLMResponse{{
@@ -349,7 +319,7 @@ func TestDeriver_MalformedJSON(t *testing.T) {
 		{Content: &genai.Content{Role: "user", Parts: []*genai.Part{{Text: "test"}}}, At: time.Now()},
 	}
 
-	err = deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
+	err := deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
 	if err == nil {
 		t.Error("Expected error for malformed JSON response")
 	}
@@ -357,11 +327,7 @@ func TestDeriver_MalformedJSON(t *testing.T) {
 
 func TestDeriver_EmptyLLMResponse(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	llm := &fakeLLM{
 		responses: []model.LLMResponse{{
@@ -376,7 +342,7 @@ func TestDeriver_EmptyLLMResponse(t *testing.T) {
 		{Content: &genai.Content{Role: "user", Parts: []*genai.Part{{Text: "test"}}}, At: time.Now()},
 	}
 
-	err = deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
+	err := deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
 	if err != nil {
 		t.Errorf("Expected nil error for empty text response, got: %v", err)
 	}
@@ -397,11 +363,7 @@ func TestDeriver_EmptyLLMResponse(t *testing.T) {
 
 func TestDeriver_InvalidLevel(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	llm := &fakeLLM{
 		responses: []model.LLMResponse{{
@@ -418,7 +380,7 @@ func TestDeriver_InvalidLevel(t *testing.T) {
 		{Content: &genai.Content{Role: "user", Parts: []*genai.Part{{Text: "test"}}}, At: time.Now()},
 	}
 
-	err = deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
+	err := deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
 	if err != nil {
 		t.Fatalf("Derive() error = %v", err)
 	}
@@ -443,11 +405,7 @@ func TestDeriver_InvalidLevel(t *testing.T) {
 
 func TestDeriver_NoFalsePositiveDedup(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	// Pre-populate with observation about Go
 	existing := &adapter.Observation{
@@ -480,7 +438,7 @@ func TestDeriver_NoFalsePositiveDedup(t *testing.T) {
 		{Content: &genai.Content{Role: "user", Parts: []*genai.Part{{Text: "I use Python for data science"}}}, At: time.Now()},
 	}
 
-	err = deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
+	err := deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
 	if err != nil {
 		t.Fatalf("Derive() error = %v", err)
 	}
@@ -497,11 +455,7 @@ func TestDeriver_NoFalsePositiveDedup(t *testing.T) {
 
 func TestDeriver_DeduplicationWithEmbedding(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	// Pre-populate with observation about Go — include an embedding.
 	// Use the same content text as the LLM will produce so that fakeEmbedding
@@ -544,7 +498,7 @@ func TestDeriver_DeduplicationWithEmbedding(t *testing.T) {
 		{Content: &genai.Content{Role: "user", Parts: []*genai.Part{{Text: "I enjoy Go"}}}, At: time.Now()},
 	}
 
-	err = deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
+	err := deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
 	if err != nil {
 		t.Fatalf("Derive() error = %v", err)
 	}
@@ -561,11 +515,7 @@ func TestDeriver_DeduplicationWithEmbedding(t *testing.T) {
 
 func TestDeriver_NilLLMResponse(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	llm := &fakeLLM{
 		responses: []model.LLMResponse{{}}, // nil Content
@@ -577,7 +527,7 @@ func TestDeriver_NilLLMResponse(t *testing.T) {
 		{Content: &genai.Content{Role: "user", Parts: []*genai.Part{{Text: "test"}}}, At: time.Now()},
 	}
 
-	err = deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
+	err := deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
 	if err != nil {
 		t.Errorf("Expected nil error for nil LLM response content, got: %v", err)
 	}
@@ -603,5 +553,26 @@ func TestValidLevel(t *testing.T) {
 				t.Errorf("validLevel(%q) = %v, want %v", tt.level, got, tt.want)
 			}
 		})
+	}
+}
+
+// fakeLLM is a test helper that implements model.LLM for testing.
+type fakeLLM struct {
+	responses []model.LLMResponse
+	calls     []*model.LLMRequest
+}
+
+func (f *fakeLLM) Name() string { return "fake-llm" }
+
+func (f *fakeLLM) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
+	f.calls = append(f.calls, req)
+	return func(yield func(*model.LLMResponse, error) bool) {
+		if len(f.responses) == 0 {
+			yield(nil, fmt.Errorf("fakeLLM: no responses configured"))
+			return
+		}
+		resp := &f.responses[0]
+		f.responses = f.responses[1:]
+		yield(resp, nil)
 	}
 }

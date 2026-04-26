@@ -84,36 +84,6 @@ func TestObservation_Score(t *testing.T) {
 	}
 }
 
-func TestSanitizeFTS5Query(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{"simple", "hello world", "hello world"},
-		{"special chars", "hello, world!", "hello world"},
-		{"quotes", `"hello" 'world'`, "hello world"},
-		{"operators neutralized", "hello AND world OR test", "hello and world or test"},
-		{"parentheses", "hello (world)", "hello world"},
-		{"empty", "", ""},
-		{"numbers", "user123 test456", "user123 test456"},
-		{"mixed", "it's a test-case", "it s a test case"},
-		{"asterisk", "hello*", "hello"},
-		{"near operator neutralized", "hello NEAR world", "hello near world"},
-		{"not operator neutralized", "hello NOT world", "hello not world"},
-		{"uppercase input", "Hello World", "hello world"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := sanitizeFTS5Query(tt.input)
-			if got != tt.want {
-				t.Errorf("sanitizeFTS5Query(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestSearchModeZeroValue(t *testing.T) {
 	// Verify SearchMode zero value is Hybrid (iota=0)
 	// This ensures uninitialized SearchOptions default to the most

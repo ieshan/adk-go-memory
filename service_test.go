@@ -15,11 +15,7 @@ import (
 
 func TestService_AddSessionToMemory_ExtractsObservations(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	llm := &fakeLLM{
 		responses: []model.LLMResponse{{
@@ -69,11 +65,7 @@ func TestService_AddSessionToMemory_ExtractsObservations(t *testing.T) {
 
 func TestService_SearchMemory_ReturnsResults(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	svc := NewService(ServiceConfig{Storage: storage})
 
@@ -123,7 +115,7 @@ func TestService_SearchMemory_NilStorage(t *testing.T) {
 
 func TestService_AddSessionToMemory_NilDeriver(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	svc := NewService(ServiceConfig{Storage: storage}) // No deriver
@@ -136,7 +128,7 @@ func TestService_AddSessionToMemory_NilDeriver(t *testing.T) {
 
 func TestService_AddSessionToMemory_NilSession(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	svc := NewService(ServiceConfig{Storage: storage})
@@ -147,7 +139,7 @@ func TestService_AddSessionToMemory_NilSession(t *testing.T) {
 
 func TestService_AddSessionToMemory_NilEvents(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	llm := &fakeLLM{}
@@ -162,7 +154,7 @@ func TestService_AddSessionToMemory_NilEvents(t *testing.T) {
 
 func TestService_AddSessionToMemory_EmptyEvents(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	llm := &fakeLLM{}
@@ -181,7 +173,7 @@ func TestService_AddSessionToMemory_EmptyEvents(t *testing.T) {
 }
 
 func TestService_Close(t *testing.T) {
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	svc := NewService(ServiceConfig{Storage: storage})
 	if err := svc.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
@@ -190,11 +182,7 @@ func TestService_Close(t *testing.T) {
 
 func TestService_SearchMemory_WithFilters(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	// Store observations for different users/apps
 	observations := []*adapter.Observation{
@@ -229,11 +217,7 @@ func TestService_SearchMemory_WithFilters(t *testing.T) {
 
 func TestService_AddSessionToMemory_MultiPartContent(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	llm := &fakeLLM{
 		responses: []model.LLMResponse{{
@@ -272,7 +256,7 @@ func TestService_AddSessionToMemory_MultiPartContent(t *testing.T) {
 
 	// Verify observation was stored
 	results, err := storage.Search(ctx, &adapter.SearchOptions{
-		Query:      "Go Python",
+		Query:      "both Go", // Substring that exists in "user likes both Go and Python"
 		MaxResults: 10,
 		Mode:       adapter.SearchModeFTS,
 	})
@@ -280,17 +264,13 @@ func TestService_AddSessionToMemory_MultiPartContent(t *testing.T) {
 		t.Fatalf("Search() error = %v", err)
 	}
 	if len(results) == 0 {
-		t.Error("Expected at least one observation stored from multi-part content")
+		t.Fatal("Expected at least one observation stored from multi-part content")
 	}
 }
 
 func TestService_AddSessionToMemory_SkipsEmptyParts(t *testing.T) {
 	ctx := context.Background()
-	storage, err := adapter.InMemory()
-	if err != nil {
-		t.Fatalf("InMemory() error = %v", err)
-	}
-	defer storage.Close()
+	storage := adapter.InMemory()
 
 	llm := &fakeLLM{
 		responses: []model.LLMResponse{{

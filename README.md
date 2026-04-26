@@ -25,15 +25,29 @@ go get github.com/ieshan/adk-go-memory
 ### Requirements
 
 - Go 1.26+
-- CGO enabled (for sqlite-vec)
-- SQLite with FTS5 support
+- For SQLite storage: CGO enabled (for sqlite-vec) and SQLite with FTS5 support
+- For map-based storage: Pure Go, no CGO required
+
+## Project Setup
+
+This repository uses Go workspaces for multi-module development. To set up the project:
+
+```bash
+make setup
+```
+
+This initializes the workspace with the root module, SQLite adapter, and examples. The `go.work` file is gitignored and managed locally by each developer.
 
 ### Build Tags
 
-The package requires the `sqlite_fts5` build tag:
+The SQLite adapter requires the `sqlite_fts5` build tag:
 
 ```bash
+# For SQLite adapter only (requires CGO)
 CGO_ENABLED=1 go build -tags=sqlite_fts5 ./...
+
+# Core package tests (no CGO required)
+go test ./...
 ```
 
 ## Quick Start
@@ -55,11 +69,8 @@ import (
 func main() {
     ctx := context.Background()
 
-    // Create in-memory storage (use NewSQLiteStorage for persistence)
-    storage, err := adapter.InMemory()
-    if err != nil {
-        log.Fatal(err)
-    }
+    // Create in-memory storage (use sqlite.NewSQLiteStorage for persistence)
+    storage := adapter.InMemory()
     defer storage.Close()
 
     // Create a memory service
@@ -123,7 +134,7 @@ func NewDeriver(cfg DeriverConfig) *Deriver
 
 // Derive extracts observations from timestamped messages and stores them.
 // Automatically deduplicates near-duplicate observations.
-func (d *Deriver) Derive(ctx context.Context, messages []TimestampedMessage, sessionID string) error
+func (d *Deriver) Derive(ctx context.Context, messages []TimestampedMessage, sessionID, userID, appName string) error
 ```
 
 ### Provider
@@ -362,9 +373,9 @@ type Storage interface {
 
 // SearchMode indicates which search strategy to use.
 const (
-    SearchModeVector SearchMode = iota  // Vector similarity search
+    SearchModeHybrid SearchMode = iota   // Reciprocal Rank Fusion of vector + FTS (default zero value)
+    SearchModeVector                     // Vector similarity search
     SearchModeFTS                        // Full-text search
-    SearchModeHybrid                     // Reciprocal Rank Fusion of both
 )
 
 // Observation represents a single extracted fact.
@@ -388,11 +399,13 @@ func (o Observation) Score() float64
 ### Storage Implementations
 
 ```go
-// InMemory creates an in-memory SQLite storage (for testing).
-func InMemory() (Storage, error)
+// InMemory creates a lightweight map-based storage (for testing).
+// Located in github.com/ieshan/adk-go-memory/adapter package.
+func InMemory() *MemoryStorage
 
 // NewSQLiteStorage creates a file-based SQLite storage (for production).
-func NewSQLiteStorage(path string) (Storage, error)
+// Located in github.com/ieshan/adk-go-memory/adapter/sqlite submodule.
+func NewSQLiteStorage(path string) (*SQLiteStorage, error)
 ```
 
 ## Agent Integration Examples
@@ -429,11 +442,8 @@ import (
 func main() {
     ctx := context.Background()
 
-    // Setup in-memory SQLite storage
-    storage, err := adapter.InMemory()
-    if err != nil {
-        log.Fatalf("Failed to create storage: %v", err)
-    }
+    // Setup in-memory storage
+    storage := adapter.InMemory()
     defer storage.Close()
 
     // Initialize LLM
@@ -586,10 +596,7 @@ func main() {
     ctx := context.Background()
 
     // Setup storage and memory service
-    storage, err := adapter.InMemory()
-    if err != nil {
-        log.Fatalf("Failed to create storage: %v", err)
-    }
+    storage := adapter.InMemory()
     defer storage.Close()
 
     modelLLM := getLLM() // Your LLM initialization
@@ -681,10 +688,7 @@ func main() {
     ctx := context.Background()
 
     // Setup shared storage and memory service
-    storage, err := adapter.InMemory()
-    if err != nil {
-        log.Fatalf("Failed to create storage: %v", err)
-    }
+    storage := adapter.InMemory()
     defer storage.Close()
 
     modelLLM := getLLM()
@@ -822,6 +826,7 @@ import (
 
     memory "github.com/ieshan/adk-go-memory"
     "github.com/ieshan/adk-go-memory/adapter"
+    "github.com/ieshan/adk-go-memory/adapter/sqlite"
     adkagent "google.golang.org/adk/agent"
     "google.golang.org/adk/agent/llmagent"
     "google.golang.org/adk/model"
@@ -832,8 +837,8 @@ import (
 func main() {
     ctx := context.Background()
 
-    // Setup storage
-    storage, err := adapter.NewSQLiteStorage("/data/agent_memory.db")
+    // Setup storage (requires CGO-enabled sqlite submodule)
+    storage, err := sqlite.NewSQLiteStorage("/data/agent_memory.db")
     if err != nil {
         log.Fatalf("Failed to create storage: %v", err)
     }
@@ -983,12 +988,20 @@ func getLLM() model.LLM {
                     └────────────┬────────────┘
                                  │
                     ┌────────────┴────────────┐
-                    │   Storage (SQLite)      │
-                    │  ├─ vec0 (vectors)      │
-                    │  ├─ fts5 (text)         │
-                    │  └─ observations        │
+                    │   Storage Interface     │
+                    │  ├─ MemoryStorage       │
+                    │  │   (map-based, root)   │
+                    │  └─ SQLiteStorage       │
+                    │      (sqlite submodule) │
+                    │      ├─ vec0 (vectors)  │
+                    │      ├─ fts5 (text)     │
+                    │      └─ observations    │
                     └─────────────────────────┘
 ```
+
+**Storage Modules:**
+- **Root adapter package** (`github.com/ieshan/adk-go-memory/adapter`): `MemoryStorage` - pure Go, no CGO required
+- **SQLite submodule** (`github.com/ieshan/adk-go-memory/adapter/sqlite`): `SQLiteStorage` - requires CGO for sqlite-vec
 
 ### Observation Levels
 
@@ -1110,11 +1123,12 @@ The standard ADK-Go memory system provides:
 ### Storage Options
 
 ```go
-// In-memory (testing)
-storage, _ := adapter.InMemory()
+// In-memory (testing) - pure Go, no CGO required
+storage := adapter.InMemory()
 
-// File-based (production)
-storage, _ := adapter.NewSQLiteStorage("/data/memory.db")
+// File-based (production) - requires CGO for sqlite-vec
+// import "github.com/ieshan/adk-go-memory/adapter/sqlite"
+storage, err := sqlite.NewSQLiteStorage("/data/memory.db")
 ```
 
 ### Deriver Configuration
@@ -1140,38 +1154,53 @@ provider := memory.NewProvider(memory.ProviderConfig{
 
 ## Testing
 
-Run tests with CGO enabled:
+The core package uses pure Go (no CGO required). Only the SQLite adapter needs CGO.
+
+Repository examples are intentionally split:
+- `examples/*/main.go` uses `adapter/sqlite` to demonstrate real SQLite-backed usage.
+- `examples/*/main_test.go` uses `adapter.InMemory()` for portable no-CGO test runs.
+
+Testing commands:
 
 ```bash
+# Run core package tests (no CGO required)
+go test -v ./...
+
+# Run SQLite adapter tests (requires CGO)
+CGO_ENABLED=1 go test -v -tags=sqlite_fts5 ./adapter/sqlite/...
+
 # Run all tests
-CGO_ENABLED=1 go test -v -tags=sqlite_fts5 ./...
+make check
 
 # Run with race detection
-CGO_ENABLED=1 go test -v -race -tags=sqlite_fts5 ./...
+make test-race
 
-# Coverage report
-CGO_ENABLED=1 go test -tags=sqlite_fts5 -coverprofile=coverage.out ./...
-go tool cover -func=coverage.out
+# Coverage report (root + sqlite adapter)
+make coverage
 ```
 
 ## Makefile Targets
 
 ```bash
-make test          # Run tests
+make test          # Run core package tests (no CGO)
+make test-sqlite   # Run SQLite adapter tests (requires CGO)
 make test-race     # Run with race detector
 make build         # Build all packages
 make vet           # Run go vet
-make check         # Run vet + test
-make coverage      # Generate coverage report
+make check         # Run vet + test + test-sqlite
+make coverage      # Generate coverage report (root + sqlite adapter)
 make clean         # Clean artifacts
 ```
 
 ## Dependencies
 
-- `github.com/asg017/sqlite-vec-go-bindings` - Vector search for SQLite
-- `github.com/mattn/go-sqlite3` - SQLite driver
+**Core package** (root module):
 - `google.golang.org/adk` - ADK-Go framework
 - `google.golang.org/genai` - Google GenAI SDK
+
+**SQLite adapter** (`adapter/sqlite` submodule - requires CGO):
+- `github.com/asg017/sqlite-vec-go-bindings` - Vector search for SQLite
+- `github.com/mattn/go-sqlite3` - SQLite driver
 
 ## License
 
@@ -1180,7 +1209,8 @@ This project is licensed under the [Mozilla Public License 2.0](https://www.mozi
 ## Contributing
 
 Contributions welcome! Please ensure:
-1. Tests pass: `CGO_ENABLED=1 go test ./...`
-2. Code is formatted: `go fmt ./...`
-3. Vet passes: `go vet ./...`
-4. No Honcho references remain (this is an independent ADK-Go package)
+1. Core tests pass: `go test ./...` (no CGO required)
+2. SQLite tests pass: `CGO_ENABLED=1 go test -tags=sqlite_fts5 ./adapter/sqlite/...`
+3. All checks pass: `make check`
+4. Code is formatted: `go fmt ./...`
+5. Keep docs/examples aligned with current module layout (`adapter` root + `adapter/sqlite` submodule).

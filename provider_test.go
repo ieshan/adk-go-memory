@@ -8,13 +8,11 @@ import (
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
-	"google.golang.org/adk/model"
-	"google.golang.org/genai"
 )
 
 func TestProvider_GetMemoryContext(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	// Store some observations
@@ -90,7 +88,7 @@ func TestProvider_GetOrCreatePeerCard(t *testing.T) {
 
 func TestProvider_LoadPeerCardFromMemory(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	// Store observations for a user with different derivation counts
@@ -128,7 +126,7 @@ func TestProvider_LoadPeerCardFromMemory(t *testing.T) {
 
 func TestProvider_LoadPeerCardFromMemory_PrioritizesMostDerived(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	// Store more observations than maxPeerCardFacts (40) to test prioritization.
@@ -198,7 +196,7 @@ func TestProvider_LoadPeerCardFromMemory_NilStorage(t *testing.T) {
 
 func TestProvider_OnSessionStart(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	// Store an observation for the user
@@ -234,7 +232,7 @@ func TestProvider_OnSessionStart_EmptyUserID(t *testing.T) {
 }
 
 func TestProvider_Close(t *testing.T) {
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	provider := NewProvider(ProviderConfig{Storage: storage})
 
 	if err := provider.Close(); err != nil {
@@ -252,7 +250,7 @@ func TestProvider_Close_NilStorage(t *testing.T) {
 
 func TestProvider_GetMemoryContext_FallbackToSearch(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
 	// Store an observation WITHOUT embedding — representation manager
@@ -284,24 +282,11 @@ func TestProvider_GetMemoryContext_FallbackToSearch(t *testing.T) {
 
 func TestProvider_Integration(t *testing.T) {
 	ctx := context.Background()
-	storage, _ := adapter.InMemory()
+	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &fakeLLM{
-		responses: []model.LLMResponse{{
-			Content: &genai.Content{
-				Parts: []*genai.Part{{
-					Text: `{"observations":[{"content":"user prefers Go","level":"explicit","tags":["preference"]}]}`,
-				}},
-			},
-		}},
-	}
-
-	deriver := NewDeriver(DeriverConfig{LLM: llm, Storage: storage})
 	provider := NewProvider(ProviderConfig{
-		Storage:    storage,
-		Deriver:    deriver,
-		Summarizer: NewSummarizer(SummarizerConfig{LLM: llm, Storage: storage}),
+		Storage: storage,
 	})
 
 	// Simulate session start

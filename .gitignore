@@ -17,16 +17,22 @@
 coverage.out
 coverage.html
 
-# Go workspace file
+# Go workspace files (local development only)
 go.work
+go.work.sum
+go.work.local
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
-# Build output directories
-/bin/
-/dist/
-/build/
+# Build output directories in any module
+**/bin/
+**/dist/
+**/build/
+
+# Coverage outputs in any module
+**/coverage.out
+**/coverage.html
 
 # ================================================
 # macOS / OSX .gitignore

@@ -1,7 +1,7 @@
 // Package main demonstrates a basic agent with memory integration.
 //
 // This example shows how to:
-//   - Set up an in-memory SQLite storage for observations
+//   - Set up storage for observations (in-memory map or SQLite adapter)
 //   - Create a Deriver for automatic fact extraction from conversations
 //   - Wire the memory service into an ADK-Go agent
 //   - Use BeforeModelCallback to inject memory context into prompts
@@ -25,6 +25,7 @@ import (
 
 	memory "github.com/ieshan/adk-go-memory"
 	"github.com/ieshan/adk-go-memory/adapter"
+	"github.com/ieshan/adk-go-memory/adapter/sqlite"
 	adkagent "google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/model"
@@ -36,12 +37,11 @@ import (
 func main() {
 	ctx := context.Background()
 
-	// Setup in-memory SQLite storage
-	storage, err := adapter.InMemory()
+	// Setup in-memory SQLite-backed storage
+	storage, err := sqlite.InMemory()
 	if err != nil {
-		log.Fatalf("Failed to create storage: %v", err)
+		log.Fatalf("Failed to create SQLite storage: %v", err)
 	}
-	defer storage.Close()
 
 	// Initialize LLM for observation extraction and agent reasoning
 	// In production, use real Gemini. For testing, a fake LLM is used.
