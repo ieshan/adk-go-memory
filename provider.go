@@ -1,3 +1,8 @@
+// Package memory provides ADK-Go memory service components.
+//
+// This file contains the Provider which wires together all memory components
+// for comprehensive context assembly including representation management
+// and peer cards.
 package memory
 
 import (

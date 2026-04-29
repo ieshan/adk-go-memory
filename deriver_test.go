@@ -2,13 +2,13 @@ package memory
 
 import (
 	"context"
-	"fmt"
-	"iter"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
+	"github.com/ieshan/adk-go-memory/internal/testutil"
+	"github.com/ieshan/idx"
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 )
@@ -17,8 +17,8 @@ func TestDeriver_ExtractsObservations(t *testing.T) {
 	ctx := context.Background()
 	storage := adapter.InMemory()
 
-	llm := &fakeLLM{
-		responses: []model.LLMResponse{{
+	llm := &testutil.FakeLLM{
+		Responses: []model.LLMResponse{{
 			Content: &genai.Content{
 				Parts: []*genai.Part{{
 					Text: `{"observations":[{"content":"user is 25 years old","level":"explicit"},{"content":"user likes Go","level":"explicit"}]}`,
@@ -56,8 +56,8 @@ func TestDeriver_HandlesEmptyResponse(t *testing.T) {
 	ctx := context.Background()
 	storage := adapter.InMemory()
 
-	llm := &fakeLLM{
-		responses: []model.LLMResponse{{
+	llm := &testutil.FakeLLM{
+		Responses: []model.LLMResponse{{
 			Content: &genai.Content{
 				Parts: []*genai.Part{{
 					Text: `{"observations":[]}`,
@@ -73,7 +73,7 @@ func TestDeriver_HandlesEmptyResponse(t *testing.T) {
 	}
 
 	// Should have no errors with empty messages
-	if len(llm.calls) != 0 {
+	if len(llm.Calls) != 0 {
 		t.Error("Expected no LLM call for empty messages")
 	}
 }
@@ -83,8 +83,9 @@ func TestDeriver_Deduplication(t *testing.T) {
 	storage := adapter.InMemory()
 
 	// Pre-populate with existing observation
+	existingID := idx.NewID()
 	existing := &adapter.Observation{
-		ID:           "obs-1",
+		ID:           existingID,
 		Content:      "user likes Go programming",
 		Level:        adapter.LevelExplicit,
 		SessionID:    "sess-1",
@@ -97,8 +98,8 @@ func TestDeriver_Deduplication(t *testing.T) {
 		t.Fatalf("Store() error = %v", err)
 	}
 
-	llm := &fakeLLM{
-		responses: []model.LLMResponse{{
+	llm := &testutil.FakeLLM{
+		Responses: []model.LLMResponse{{
 			Content: &genai.Content{
 				Parts: []*genai.Part{{
 					Text: `{"observations":[{"content":"user likes Go","level":"explicit"}]}`,
@@ -118,7 +119,7 @@ func TestDeriver_Deduplication(t *testing.T) {
 	}
 
 	// Should have incremented TimesDerived, not created duplicate
-	obs, err := storage.GetByID(ctx, "obs-1")
+	obs, err := storage.GetByID(ctx, existingID)
 	if err != nil {
 		t.Fatalf("GetByID() error = %v", err)
 	}
@@ -132,8 +133,8 @@ func TestDeriver_GeneratesUniqueIDs(t *testing.T) {
 	ctx := context.Background()
 	storage := adapter.InMemory()
 
-	llm := &fakeLLM{
-		responses: []model.LLMResponse{{
+	llm := &testutil.FakeLLM{
+		Responses: []model.LLMResponse{{
 			Content: &genai.Content{
 				Parts: []*genai.Part{{
 					Text: `{"observations":[{"content":"fact A","level":"explicit"},{"content":"fact B","level":"explicit"}]}`,
@@ -171,9 +172,9 @@ func TestDeriver_GeneratesUniqueIDs(t *testing.T) {
 		t.Error("Observation IDs should be unique")
 	}
 
-	// Check IDs have obs- prefix
-	if !strings.HasPrefix(results[0].Observation.ID, "obs-") {
-		t.Errorf("ID should have 'obs-' prefix: %s", results[0].Observation.ID)
+	// Check IDs are valid (not zero)
+	if results[0].Observation.ID.IsZero() {
+		t.Errorf("ID should not be zero")
 	}
 }
 
@@ -181,8 +182,8 @@ func TestDeriver_SetsSessionID(t *testing.T) {
 	ctx := context.Background()
 	storage := adapter.InMemory()
 
-	llm := &fakeLLM{
-		responses: []model.LLMResponse{{
+	llm := &testutil.FakeLLM{
+		Responses: []model.LLMResponse{{
 			Content: &genai.Content{
 				Parts: []*genai.Part{{
 					Text: `{"observations":[{"content":"test fact","level":"explicit"}]}`,
@@ -223,8 +224,8 @@ func TestDeriver_SetsUserIDAndAppName(t *testing.T) {
 	ctx := context.Background()
 	storage := adapter.InMemory()
 
-	llm := &fakeLLM{
-		responses: []model.LLMResponse{{
+	llm := &testutil.FakeLLM{
+		Responses: []model.LLMResponse{{
 			Content: &genai.Content{
 				Parts: []*genai.Part{{
 					Text: `{"observations":[{"content":"test fact","level":"explicit"}]}`,
@@ -268,7 +269,7 @@ func TestDeriver_LLMError(t *testing.T) {
 	ctx := context.Background()
 	storage := adapter.InMemory()
 
-	llm := &fakeLLM{} // No responses configured -> returns error
+	llm := &testutil.FakeLLM{} // No responses configured -> returns error
 
 	deriver := NewDeriver(DeriverConfig{LLM: llm, Storage: storage})
 	msgs := []TimestampedMessage{
@@ -304,8 +305,8 @@ func TestDeriver_MalformedJSON(t *testing.T) {
 	ctx := context.Background()
 	storage := adapter.InMemory()
 
-	llm := &fakeLLM{
-		responses: []model.LLMResponse{{
+	llm := &testutil.FakeLLM{
+		Responses: []model.LLMResponse{{
 			Content: &genai.Content{
 				Parts: []*genai.Part{{
 					Text: `this is not valid JSON`,
@@ -329,8 +330,8 @@ func TestDeriver_EmptyLLMResponse(t *testing.T) {
 	ctx := context.Background()
 	storage := adapter.InMemory()
 
-	llm := &fakeLLM{
-		responses: []model.LLMResponse{{
+	llm := &testutil.FakeLLM{
+		Responses: []model.LLMResponse{{
 			Content: &genai.Content{
 				Parts: []*genai.Part{{Text: ""}},
 			},
@@ -365,8 +366,8 @@ func TestDeriver_InvalidLevel(t *testing.T) {
 	ctx := context.Background()
 	storage := adapter.InMemory()
 
-	llm := &fakeLLM{
-		responses: []model.LLMResponse{{
+	llm := &testutil.FakeLLM{
+		Responses: []model.LLMResponse{{
 			Content: &genai.Content{
 				Parts: []*genai.Part{{
 					Text: `{"observations":[{"content":"test fact","level":"invalid_level"}]}`,
@@ -408,8 +409,9 @@ func TestDeriver_NoFalsePositiveDedup(t *testing.T) {
 	storage := adapter.InMemory()
 
 	// Pre-populate with observation about Go
+	existingID := idx.NewID()
 	existing := &adapter.Observation{
-		ID:           "obs-1",
+		ID:           existingID,
 		Content:      "user likes Go programming",
 		Level:        adapter.LevelExplicit,
 		SessionID:    "sess-1",
@@ -423,8 +425,8 @@ func TestDeriver_NoFalsePositiveDedup(t *testing.T) {
 	}
 
 	// LLM extracts an unrelated observation about Python
-	llm := &fakeLLM{
-		responses: []model.LLMResponse{{
+	llm := &testutil.FakeLLM{
+		Responses: []model.LLMResponse{{
 			Content: &genai.Content{
 				Parts: []*genai.Part{{
 					Text: `{"observations":[{"content":"user prefers Python for data science","level":"explicit"}]}`,
@@ -444,7 +446,7 @@ func TestDeriver_NoFalsePositiveDedup(t *testing.T) {
 	}
 
 	// Original observation should NOT have been incremented
-	obs, err := storage.GetByID(ctx, "obs-1")
+	obs, err := storage.GetByID(ctx, existingID)
 	if err != nil {
 		t.Fatalf("GetByID() error = %v", err)
 	}
@@ -460,8 +462,9 @@ func TestDeriver_DeduplicationWithEmbedding(t *testing.T) {
 	// Pre-populate with observation about Go — include an embedding.
 	// Use the same content text as the LLM will produce so that fakeEmbedding
 	// generates matching vectors (fakeEmbedding is a hash, not semantically meaningful).
+	existingID := idx.NewID()
 	existing := &adapter.Observation{
-		ID:           "obs-1",
+		ID:           existingID,
 		Content:      "user enjoys Go programming",
 		Level:        adapter.LevelExplicit,
 		SessionID:    "sess-1",
@@ -469,15 +472,15 @@ func TestDeriver_DeduplicationWithEmbedding(t *testing.T) {
 		AppName:      "app1",
 		TimesDerived: 1,
 		CreatedAt:    time.Now(),
-		Embedding:    fakeEmbedding("user enjoys Go programming"),
+		Embedding:    testutil.FakeEmbedding("user enjoys Go programming"),
 	}
 	if err := storage.Store(ctx, existing); err != nil {
 		t.Fatalf("Store() error = %v", err)
 	}
 
 	// LLM extracts an observation with identical content (near-duplicate)
-	llm := &fakeLLM{
-		responses: []model.LLMResponse{{
+	llm := &testutil.FakeLLM{
+		Responses: []model.LLMResponse{{
 			Content: &genai.Content{
 				Parts: []*genai.Part{{
 					Text: `{"observations":[{"content":"user enjoys Go programming","level":"explicit"}]}`,
@@ -491,7 +494,7 @@ func TestDeriver_DeduplicationWithEmbedding(t *testing.T) {
 		LLM:     llm,
 		Storage: storage,
 		EmbeddingFunc: func(ctx context.Context, text string) ([]float32, error) {
-			return fakeEmbedding(text), nil
+			return testutil.FakeEmbedding(text), nil
 		},
 	})
 	msgs := []TimestampedMessage{
@@ -504,7 +507,7 @@ func TestDeriver_DeduplicationWithEmbedding(t *testing.T) {
 	}
 
 	// Original observation should have TimesDerived incremented (dedup worked)
-	obs, err := storage.GetByID(ctx, "obs-1")
+	obs, err := storage.GetByID(ctx, existingID)
 	if err != nil {
 		t.Fatalf("GetByID() error = %v", err)
 	}
@@ -517,8 +520,8 @@ func TestDeriver_NilLLMResponse(t *testing.T) {
 	ctx := context.Background()
 	storage := adapter.InMemory()
 
-	llm := &fakeLLM{
-		responses: []model.LLMResponse{{}}, // nil Content
+	llm := &testutil.FakeLLM{
+		Responses: []model.LLMResponse{{}}, // nil Content
 
 	}
 
@@ -556,23 +559,95 @@ func TestValidLevel(t *testing.T) {
 	}
 }
 
-// fakeLLM is a test helper that implements model.LLM for testing.
-type fakeLLM struct {
-	responses []model.LLMResponse
-	calls     []*model.LLMRequest
+func TestFormatTimestampedMessage_Author(t *testing.T) {
+	tests := []struct {
+		name   string
+		msg    TimestampedMessage
+		wantIn string
+	}{
+		{
+			name: "with author field",
+			msg: TimestampedMessage{
+				Content: &genai.Content{Role: "user", Parts: []*genai.Part{{Text: "hello"}}},
+				At:      time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+				Author:  "Alice",
+			},
+			wantIn: "Alice",
+		},
+		{
+			name: "without author falls back to role",
+			msg: TimestampedMessage{
+				Content: &genai.Content{Role: "assistant", Parts: []*genai.Part{{Text: "hi there"}}},
+				At:      time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+				Author:  "",
+			},
+			wantIn: "assistant",
+		},
+		{
+			name: "empty role and author defaults to user",
+			msg: TimestampedMessage{
+				Content: &genai.Content{Role: "", Parts: []*genai.Part{{Text: "test"}}},
+				At:      time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+				Author:  "",
+			},
+			wantIn: "user",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatTimestampedMessage(tt.msg)
+			if !strings.Contains(got, tt.wantIn) {
+				t.Errorf("formatTimestampedMessage() = %q, want to contain %q", got, tt.wantIn)
+			}
+		})
+	}
 }
 
-func (f *fakeLLM) Name() string { return "fake-llm" }
+func TestDeriver_AuthorInLLMPrompt(t *testing.T) {
+	ctx := context.Background()
+	storage := adapter.InMemory()
 
-func (f *fakeLLM) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
-	f.calls = append(f.calls, req)
-	return func(yield func(*model.LLMResponse, error) bool) {
-		if len(f.responses) == 0 {
-			yield(nil, fmt.Errorf("fakeLLM: no responses configured"))
-			return
+	llm := &testutil.FakeLLM{
+		Responses: []model.LLMResponse{{
+			Content: &genai.Content{
+				Parts: []*genai.Part{{
+					Text: `{"observations":[{"content":"user is Alice","level":"explicit"}]}`,
+				}},
+			},
+		}},
+	}
+
+	deriver := NewDeriver(DeriverConfig{LLM: llm, Storage: storage})
+	msgs := []TimestampedMessage{
+		{
+			Content: &genai.Content{Role: "user", Parts: []*genai.Part{{Text: "My name is Alice"}}},
+			At:      time.Now(),
+			Author:  "Alice",
+		},
+	}
+
+	err := deriver.Derive(ctx, msgs, "sess-1", "u1", "app1")
+	if err != nil {
+		t.Fatalf("Derive() error = %v", err)
+	}
+
+	// Verify the LLM was called and the prompt includes the author
+	if len(llm.Calls) != 1 {
+		t.Fatalf("Expected 1 LLM call, got %d", len(llm.Calls))
+	}
+
+	// Check that the prompt content includes "Alice" as the author
+	found := false
+	for _, content := range llm.Calls[0].Contents {
+		for _, part := range content.Parts {
+			if strings.Contains(part.Text, "Alice") {
+				found = true
+				break
+			}
 		}
-		resp := &f.responses[0]
-		f.responses = f.responses[1:]
-		yield(resp, nil)
+	}
+	if !found {
+		t.Error("Expected LLM prompt to contain author 'Alice'")
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
+	"github.com/ieshan/adk-go-memory/internal/testutil"
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 )
@@ -50,8 +51,8 @@ func TestSummarizer_Summarize(t *testing.T) {
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &fakeLLM{
-		responses: []model.LLMResponse{{
+	llm := &testutil.FakeLLM{
+		Responses: []model.LLMResponse{{
 			Content: &genai.Content{
 				Parts: []*genai.Part{{
 					Text: "Summary of conversation about Go programming.",
@@ -88,7 +89,7 @@ func TestSummarizer_Summarize_EmptyMessages(t *testing.T) {
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &fakeLLM{}
+	llm := &testutil.FakeLLM{}
 	summarizer := NewSummarizer(SummarizerConfig{
 		LLM:     llm,
 		Storage: storage,
@@ -104,7 +105,7 @@ func TestSummarizer_DefaultIntervals(t *testing.T) {
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &fakeLLM{}
+	llm := &testutil.FakeLLM{}
 	summarizer := NewSummarizer(SummarizerConfig{
 		LLM:     llm,
 		Storage: storage,
@@ -127,7 +128,7 @@ func TestSummarizer_StoreAndGetBothSummaries(t *testing.T) {
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &fakeLLM{}
+	llm := &testutil.FakeLLM{}
 	summarizer := NewSummarizer(SummarizerConfig{
 		LLM:     llm,
 		Storage: storage,
@@ -189,7 +190,7 @@ func TestSummarizer_StoreAndGetSummaries_ContentWithoutSummaryWord(t *testing.T)
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &fakeLLM{}
+	llm := &testutil.FakeLLM{}
 	summarizer := NewSummarizer(SummarizerConfig{
 		LLM:     llm,
 		Storage: storage,
@@ -230,7 +231,7 @@ func TestSummarizer_GetBothSummaries_NoSummaries(t *testing.T) {
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &fakeLLM{}
+	llm := &testutil.FakeLLM{}
 	summarizer := NewSummarizer(SummarizerConfig{
 		LLM:     llm,
 		Storage: storage,
@@ -253,7 +254,7 @@ func TestSummarizer_Summarize_LLMError(t *testing.T) {
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &fakeLLM{} // No responses configured -> returns error
+	llm := &testutil.FakeLLM{} // No responses configured -> returns error
 	summarizer := NewSummarizer(SummarizerConfig{
 		LLM:     llm,
 		Storage: storage,
@@ -286,5 +287,262 @@ func TestSummarizer_Summarize_NilLLM(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "LLM is required") {
 		t.Errorf("Error = %q, want error mentioning 'LLM is required'", err.Error())
+	}
+}
+
+// Phase 3 Enhanced Summarizer Tests
+
+func TestSummarizer_ShouldSummarizeEnhanced_MaxEvents(t *testing.T) {
+	cfg := SummarizerConfig{
+		ShortInterval: 20,
+		LongInterval:  60,
+		MaxEvents:     100,
+	}
+	s := NewSummarizer(cfg)
+
+	tests := []struct {
+		name            string
+		messageCount    int
+		estimatedTokens int
+		wantType        SummaryType
+		wantBool        bool
+		wantReason      string
+	}{
+		{
+			name:            "below MaxEvents threshold",
+			messageCount:    50,
+			estimatedTokens: 1000,
+			wantType:        "",
+			wantBool:        false,
+		},
+		{
+			name:            "at MaxEvents threshold triggers interval",
+			messageCount:    100, // At threshold but not above, but 100 % 20 == 0 triggers short
+			estimatedTokens: 1000,
+			wantType:        SummaryTypeShort,
+			wantBool:        true,
+			wantReason:      "short interval",
+		},
+		{
+			name:            "exceeds MaxEvents threshold",
+			messageCount:    101,
+			estimatedTokens: 1000,
+			wantType:        SummaryTypeLong,
+			wantBool:        true,
+			wantReason:      "exceeds MaxEvents",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotType, gotReason, gotBool := s.ShouldSummarizeEnhanced(tt.messageCount, tt.estimatedTokens)
+			if gotBool != tt.wantBool {
+				t.Errorf("ShouldSummarizeEnhanced() bool = %v, want %v", gotBool, tt.wantBool)
+			}
+			if gotType != tt.wantType {
+				t.Errorf("ShouldSummarizeEnhanced() type = %q, want %q", gotType, tt.wantType)
+			}
+			if tt.wantReason != "" && !strings.Contains(gotReason, tt.wantReason) {
+				t.Errorf("ShouldSummarizeEnhanced() reason = %q, want to contain %q", gotReason, tt.wantReason)
+			}
+		})
+	}
+}
+
+func TestSummarizer_ShouldSummarizeEnhanced_MaxTokens(t *testing.T) {
+	cfg := SummarizerConfig{
+		ShortInterval: 20,
+		LongInterval:  60,
+		MaxTokens:     4000,
+	}
+	s := NewSummarizer(cfg)
+
+	tests := []struct {
+		name            string
+		messageCount    int
+		estimatedTokens int
+		wantType        SummaryType
+		wantBool        bool
+		wantReason      string
+	}{
+		{
+			name:            "below MaxTokens threshold",
+			messageCount:    50,
+			estimatedTokens: 2000,
+			wantType:        "",
+			wantBool:        false,
+		},
+		{
+			name:            "exceeds MaxTokens threshold",
+			messageCount:    50,
+			estimatedTokens: 4001,
+			wantType:        SummaryTypeLong,
+			wantBool:        true,
+			wantReason:      "exceeds MaxTokens",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotType, gotReason, gotBool := s.ShouldSummarizeEnhanced(tt.messageCount, tt.estimatedTokens)
+			if gotBool != tt.wantBool {
+				t.Errorf("ShouldSummarizeEnhanced() bool = %v, want %v", gotBool, tt.wantBool)
+			}
+			if gotType != tt.wantType {
+				t.Errorf("ShouldSummarizeEnhanced() type = %q, want %q", gotType, tt.wantType)
+			}
+			if tt.wantReason != "" && !strings.Contains(gotReason, tt.wantReason) {
+				t.Errorf("ShouldSummarizeEnhanced() reason = %q, want to contain %q", gotReason, tt.wantReason)
+			}
+		})
+	}
+}
+
+func TestSummarizer_ShouldSummarizeEnhanced_IntervalFallback(t *testing.T) {
+	cfg := SummarizerConfig{
+		ShortInterval: 20,
+		LongInterval:  60,
+	}
+	s := NewSummarizer(cfg)
+
+	tests := []struct {
+		name            string
+		messageCount    int
+		estimatedTokens int
+		wantType        SummaryType
+		wantBool        bool
+		wantReason      string
+	}{
+		{
+			name:            "short interval triggered",
+			messageCount:    20,
+			estimatedTokens: 100,
+			wantType:        SummaryTypeShort,
+			wantBool:        true,
+			wantReason:      "short interval",
+		},
+		{
+			name:            "long interval triggered",
+			messageCount:    60,
+			estimatedTokens: 100,
+			wantType:        SummaryTypeLong,
+			wantBool:        true,
+			wantReason:      "long interval",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotType, gotReason, gotBool := s.ShouldSummarizeEnhanced(tt.messageCount, tt.estimatedTokens)
+			if gotBool != tt.wantBool {
+				t.Errorf("ShouldSummarizeEnhanced() bool = %v, want %v", gotBool, tt.wantBool)
+			}
+			if gotType != tt.wantType {
+				t.Errorf("ShouldSummarizeEnhanced() type = %q, want %q", gotType, tt.wantType)
+			}
+			if tt.wantReason != "" && !strings.Contains(gotReason, tt.wantReason) {
+				t.Errorf("ShouldSummarizeEnhanced() reason = %q, want to contain %q", gotReason, tt.wantReason)
+			}
+		})
+	}
+}
+
+func TestEstimateTokens(t *testing.T) {
+	tests := []struct {
+		name     string
+		messages []TimestampedMessage
+		wantMin  int // Allow some tolerance
+		wantMax  int
+	}{
+		{
+			name:     "empty messages",
+			messages: []TimestampedMessage{},
+			wantMin:  0,
+			wantMax:  0,
+		},
+		{
+			name: "single short message",
+			messages: []TimestampedMessage{
+				{Content: &genai.Content{Parts: []*genai.Part{{Text: "hello"}}}},
+			},
+			wantMin: 1,
+			wantMax: 2,
+		},
+		{
+			name: "multiple messages",
+			messages: []TimestampedMessage{
+				{Content: &genai.Content{Parts: []*genai.Part{{Text: "hello world"}}}},
+				{Content: &genai.Content{Parts: []*genai.Part{{Text: "test message"}}}},
+			},
+			wantMin: 5,
+			wantMax: 6,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := EstimateTokens(tt.messages)
+			if got < tt.wantMin || got > tt.wantMax {
+				t.Errorf("EstimateTokens() = %d, want between %d and %d", got, tt.wantMin, tt.wantMax)
+			}
+		})
+	}
+}
+
+func TestSummarizer_GetMessagesForSummarization(t *testing.T) {
+	createMessages := func(n int) []TimestampedMessage {
+		msgs := make([]TimestampedMessage, n)
+		for i := 0; i < n; i++ {
+			msgs[i] = TimestampedMessage{
+				Content: &genai.Content{Parts: []*genai.Part{{Text: fmt.Sprintf("message %d", i)}}},
+			}
+		}
+		return msgs
+	}
+
+	tests := []struct {
+		name       string
+		keepRecent int
+		msgCount   int
+		wantCount  int
+	}{
+		{
+			name:       "KeepRecent 0 returns all",
+			keepRecent: 0,
+			msgCount:   10,
+			wantCount:  10,
+		},
+		{
+			name:       "KeepRecent 2 excludes last 2",
+			keepRecent: 2,
+			msgCount:   10,
+			wantCount:  8,
+		},
+		{
+			name:       "KeepRecent larger than messages returns all",
+			keepRecent: 20,
+			msgCount:   10,
+			wantCount:  10,
+		},
+		{
+			name:       "KeepRecent equals messages returns all",
+			keepRecent: 10,
+			msgCount:   10,
+			wantCount:  10,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := SummarizerConfig{
+				KeepRecent: tt.keepRecent,
+			}
+			s := NewSummarizer(cfg)
+			msgs := createMessages(tt.msgCount)
+			got := s.GetMessagesForSummarization(msgs)
+			if len(got) != tt.wantCount {
+				t.Errorf("GetMessagesForSummarization() returned %d messages, want %d", len(got), tt.wantCount)
+			}
+		})
 	}
 }

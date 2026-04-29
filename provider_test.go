@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
+	"github.com/ieshan/adk-go-memory/internal/testutil"
+	"github.com/ieshan/idx"
 )
 
 func TestProvider_GetMemoryContext(t *testing.T) {
@@ -16,17 +18,18 @@ func TestProvider_GetMemoryContext(t *testing.T) {
 	defer storage.Close()
 
 	// Store some observations
+	id1, id2 := idx.NewID(), idx.NewID()
 	obs1 := &adapter.Observation{
-		ID: "obs-1", Content: "user prefers dark mode", Level: adapter.LevelExplicit,
+		ID: id1, Content: "user prefers dark mode", Level: adapter.LevelExplicit,
 		SessionID: "s1", UserID: "u1", AppName: "a1",
 		TimesDerived: 1, CreatedAt: time.Now(),
-		Embedding: fakeEmbedding("dark mode preference"),
+		Embedding: testutil.FakeEmbedding("dark mode preference"),
 	}
 	obs2 := &adapter.Observation{
-		ID: "obs-2", Content: "user works with Python", Level: adapter.LevelExplicit,
+		ID: id2, Content: "user works with Python", Level: adapter.LevelExplicit,
 		SessionID: "s1", UserID: "u1", AppName: "a1",
 		TimesDerived: 1, CreatedAt: time.Now(),
-		Embedding: fakeEmbedding("python programming"),
+		Embedding: testutil.FakeEmbedding("python programming"),
 	}
 	if err := storage.Store(ctx, obs1); err != nil {
 		t.Fatalf("Store() error = %v", err)
@@ -37,7 +40,7 @@ func TestProvider_GetMemoryContext(t *testing.T) {
 
 	provider := NewProvider(ProviderConfig{
 		Storage:       storage,
-		EmbeddingFunc: func(ctx context.Context, text string) ([]float32, error) { return fakeEmbedding(text), nil },
+		EmbeddingFunc: func(ctx context.Context, text string) ([]float32, error) { return testutil.FakeEmbedding(text), nil },
 	})
 
 	result, err := provider.GetMemoryContext(ctx, "dark mode", "s1", "u1", "a1")
@@ -93,9 +96,9 @@ func TestProvider_LoadPeerCardFromMemory(t *testing.T) {
 
 	// Store observations for a user with different derivation counts
 	observations := []*adapter.Observation{
-		{ID: "obs-1", Content: "user likes coffee", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 1, CreatedAt: time.Now()},
-		{ID: "obs-2", Content: "user prefers tea", Level: adapter.LevelDeductive, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 5, CreatedAt: time.Now()},
-		{ID: "obs-3", Content: "user works remotely", Level: adapter.LevelInductive, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 3, CreatedAt: time.Now()},
+		{ID: idx.NewID(), Content: "user likes coffee", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 1, CreatedAt: time.Now()},
+		{ID: idx.NewID(), Content: "user prefers tea", Level: adapter.LevelDeductive, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 5, CreatedAt: time.Now()},
+		{ID: idx.NewID(), Content: "user works remotely", Level: adapter.LevelInductive, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 3, CreatedAt: time.Now()},
 	}
 	for _, obs := range observations {
 		if err := storage.Store(ctx, obs); err != nil {
@@ -135,7 +138,7 @@ func TestProvider_LoadPeerCardFromMemory_PrioritizesMostDerived(t *testing.T) {
 	// returns observations sorted by times_derived DESC.
 	for i := 0; i < 40; i++ {
 		obs := &adapter.Observation{
-			ID:           fmt.Sprintf("obs-low-%d", i),
+			ID:           idx.NewID(),
 			Content:      fmt.Sprintf("low-importance fact %d", i),
 			Level:        adapter.LevelInductive,
 			SessionID:    "s1",
@@ -150,7 +153,7 @@ func TestProvider_LoadPeerCardFromMemory_PrioritizesMostDerived(t *testing.T) {
 	}
 	for i := 0; i < 5; i++ {
 		obs := &adapter.Observation{
-			ID:           fmt.Sprintf("obs-high-%d", i),
+			ID:           idx.NewID(),
 			Content:      fmt.Sprintf("high-importance fact %d", i),
 			Level:        adapter.LevelExplicit,
 			SessionID:    "s1",
@@ -201,7 +204,7 @@ func TestProvider_OnSessionStart(t *testing.T) {
 
 	// Store an observation for the user
 	obs := &adapter.Observation{
-		ID: "obs-1", Content: "user likes hiking", Level: adapter.LevelExplicit,
+		ID: idx.NewID(), Content: "user likes hiking", Level: adapter.LevelExplicit,
 		SessionID: "s1", UserID: "u1", AppName: "a1",
 		TimesDerived: 1, CreatedAt: time.Now(),
 	}
@@ -256,7 +259,7 @@ func TestProvider_GetMemoryContext_FallbackToSearch(t *testing.T) {
 	// Store an observation WITHOUT embedding — representation manager
 	// won't find it via semantic search, so it should fall back to simple search.
 	obs := &adapter.Observation{
-		ID: "obs-1", Content: "user likes Rust", Level: adapter.LevelExplicit,
+		ID: idx.NewID(), Content: "user likes Rust", Level: adapter.LevelExplicit,
 		SessionID: "s1", UserID: "u1", AppName: "a1",
 		TimesDerived: 1, CreatedAt: time.Now(),
 	}
@@ -268,7 +271,7 @@ func TestProvider_GetMemoryContext_FallbackToSearch(t *testing.T) {
 	// representation manager returns empty, should fall back to search
 	provider := NewProvider(ProviderConfig{
 		Storage:       storage,
-		EmbeddingFunc: func(ctx context.Context, text string) ([]float32, error) { return fakeEmbedding(text), nil },
+		EmbeddingFunc: func(ctx context.Context, text string) ([]float32, error) { return testutil.FakeEmbedding(text), nil },
 	})
 
 	result, err := provider.GetMemoryContext(ctx, "Rust", "s1", "u1", "a1")

@@ -10,7 +10,7 @@ import (
 
 	memory "github.com/ieshan/adk-go-memory"
 	"github.com/ieshan/adk-go-memory/adapter"
-	"github.com/ieshan/adk-go-memory/examples/internal/testutil"
+	"github.com/ieshan/adk-go-memory/internal/testutil"
 	"google.golang.org/adk/model"
 )
 

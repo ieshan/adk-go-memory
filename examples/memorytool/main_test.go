@@ -10,7 +10,8 @@ import (
 
 	memory "github.com/ieshan/adk-go-memory"
 	"github.com/ieshan/adk-go-memory/adapter"
-	"github.com/ieshan/adk-go-memory/examples/internal/testutil"
+	"github.com/ieshan/adk-go-memory/internal/testutil"
+	"github.com/ieshan/idx"
 	adkagent "google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/model"
@@ -28,7 +29,7 @@ func TestMemoryTool_ExplicitSearch(t *testing.T) {
 	storage := adapter.InMemory()
 
 	obs := &adapter.Observation{
-		ID:        "obs-1",
+		ID:        idx.NewID(),
 		Content:   "User enjoys hiking on weekends",
 		Level:     adapter.LevelExplicit,
 		UserID:    "user1",

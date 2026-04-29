@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/ieshan/idx"
 )
 
 // Compile-time interface compliance check.
@@ -15,14 +17,14 @@ var _ Storage = (*MemoryStorage)(nil)
 // It does NOT support true vector or FTS search; Search uses simple substring matching.
 type MemoryStorage struct {
 	mu           sync.RWMutex
-	observations map[string]*Observation
+	observations map[idx.ID]*Observation
 }
 
 // InMemory creates a lightweight map-based Storage for tests and demos.
 // It does NOT support vector/FTS search; Search falls back to simple text matching.
 func InMemory() *MemoryStorage {
 	return &MemoryStorage{
-		observations: make(map[string]*Observation),
+		observations: make(map[idx.ID]*Observation),
 	}
 }
 
@@ -57,13 +59,13 @@ func (s *MemoryStorage) Store(ctx context.Context, obs *Observation) error {
 }
 
 // GetByID retrieves an observation by its ID.
-func (s *MemoryStorage) GetByID(ctx context.Context, id string) (*Observation, error) {
+func (s *MemoryStorage) GetByID(ctx context.Context, id idx.ID) (*Observation, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	obs, exists := s.observations[id]
 	if !exists {
-		return nil, fmt.Errorf("observation not found: %s", id)
+		return nil, fmt.Errorf("observation not found: %s", id.String())
 	}
 
 	// Return a clone to avoid external mutation
@@ -120,7 +122,7 @@ func (s *MemoryStorage) Search(ctx context.Context, opts *SearchOptions) ([]Sear
 }
 
 // Forget deletes an observation by ID.
-func (s *MemoryStorage) Forget(ctx context.Context, id string) error {
+func (s *MemoryStorage) Forget(ctx context.Context, id idx.ID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -162,13 +164,13 @@ func (s *MemoryStorage) Purge(ctx context.Context, filter map[string]string) err
 }
 
 // IncrementTimesDerived increments the times_derived counter for an observation.
-func (s *MemoryStorage) IncrementTimesDerived(ctx context.Context, id string) error {
+func (s *MemoryStorage) IncrementTimesDerived(ctx context.Context, id idx.ID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	obs, exists := s.observations[id]
 	if !exists {
-		return fmt.Errorf("memory: increment times_derived: observation not found: %s", id)
+		return fmt.Errorf("memory: increment times_derived: observation not found: %s", id.String())
 	}
 
 	obs.TimesDerived++

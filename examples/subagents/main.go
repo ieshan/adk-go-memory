@@ -35,7 +35,7 @@ import (
 func main() {
 	ctx := context.Background()
 
-	// Setup in-memory storage and memory service
+	// Setup in-memory storage and memory kit
 	storage, err := sqlite.InMemory()
 	if err != nil {
 		log.Fatalf("Failed to create SQLite storage: %v", err)
@@ -44,22 +44,19 @@ func main() {
 	// For production, use a real LLM. For this example, we'll need an LLM.
 	modelLLM := getLLM()
 
-	// Create deriver for automatic fact extraction
-	deriver := memory.NewDeriver(memory.DeriverConfig{
+	// Create memory kit with all components
+	kit, err := memory.New(memory.KitConfig{
+		Storage: storage,
 		LLM:     modelLLM,
-		Storage: storage,
 	})
-
-	// Create memory service
-	svc := memory.NewService(memory.ServiceConfig{
-		Storage: storage,
-		Deriver: deriver,
-	})
-	defer svc.Close()
+	if err != nil {
+		log.Fatalf("Failed to create memory kit: %v", err)
+	}
+	defer kit.Close()
 
 	// Create sub-agents
 	factRecorder := createFactRecorder(modelLLM)
-	greeter := createGreeter(modelLLM, svc)
+	greeter := createGreeter(modelLLM, kit.Service.(*memory.Service))
 
 	// Create parent agent with sub-agents
 	parentAgent, err := llmagent.New(llmagent.Config{
@@ -83,7 +80,7 @@ func main() {
 		AppName:           appName,
 		Agent:             parentAgent,
 		SessionService:    sessionService,
-		MemoryService:     svc,
+		MemoryService:     kit.Service,
 		AutoCreateSession: true,
 	})
 	if err != nil {

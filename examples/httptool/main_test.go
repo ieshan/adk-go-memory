@@ -10,7 +10,7 @@ import (
 
 	"google.golang.org/genai"
 
-	"github.com/ieshan/adk-go-memory/examples/internal/testutil"
+	"github.com/ieshan/adk-go-memory/internal/testutil"
 	adkagent "google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/model"

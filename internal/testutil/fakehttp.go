@@ -1,4 +1,4 @@
-// Package testutil provides HTTP testing utilities for adk-go-memory examples.
+// Package testutil provides testing utilities for adk-go-memory.
 package testutil
 
 import (
@@ -7,16 +7,16 @@ import (
 	"strings"
 )
 
-// MockTransport is an http.RoundTripper that redirects requests to a mock server.
-type MockTransport struct {
+// FakeTransport is an http.RoundTripper that redirects requests to a mock server.
+type FakeTransport struct {
 	BaseURL string
 }
 
 // RoundTrip implements http.RoundTripper.
 // It replaces the request URL host with the mock server base URL.
-func (m *MockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (f *FakeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Replace the host with the mock server
-	mockURL := m.BaseURL + req.URL.Path
+	mockURL := f.BaseURL + req.URL.Path
 	if req.URL.RawQuery != "" {
 		mockURL = mockURL + "?" + req.URL.RawQuery
 	}
@@ -24,7 +24,7 @@ func (m *MockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Create new request with mock URL
 	newReq, err := http.NewRequest(req.Method, mockURL, req.Body)
 	if err != nil {
-		return nil, fmt.Errorf("mock transport: create request: %w", err)
+		return nil, fmt.Errorf("fake transport: create request: %w", err)
 	}
 	newReq.Header = req.Header
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/ieshan/idx"
 )
 
 func TestMemoryStorage_StoreGetByID_RoundTrip(t *testing.T) {
@@ -11,8 +13,9 @@ func TestMemoryStorage_StoreGetByID_RoundTrip(t *testing.T) {
 	storage := InMemory()
 	defer storage.Close()
 
+	id := idx.NewID()
 	obs := &Observation{
-		ID:           "obs-1",
+		ID:           id,
 		Content:      "test observation",
 		Level:        LevelExplicit,
 		SessionID:    "s1",
@@ -27,13 +30,13 @@ func TestMemoryStorage_StoreGetByID_RoundTrip(t *testing.T) {
 		t.Fatalf("Store() error = %v", err)
 	}
 
-	result, err := storage.GetByID(ctx, "obs-1")
+	result, err := storage.GetByID(ctx, id)
 	if err != nil {
 		t.Fatalf("GetByID() error = %v", err)
 	}
 
 	if result.ID != obs.ID {
-		t.Errorf("ID = %q, want %q", result.ID, obs.ID)
+		t.Errorf("ID = %v, want %v", result.ID, obs.ID)
 	}
 	if result.Content != obs.Content {
 		t.Errorf("Content = %q, want %q", result.Content, obs.Content)
@@ -45,8 +48,9 @@ func TestMemoryStorage_Store_DuplicateID(t *testing.T) {
 	storage := InMemory()
 	defer storage.Close()
 
+	id := idx.NewID()
 	obs := &Observation{
-		ID:        "obs-dup",
+		ID:        id,
 		Content:   "first",
 		Level:     LevelExplicit,
 		SessionID: "s1",
@@ -57,7 +61,7 @@ func TestMemoryStorage_Store_DuplicateID(t *testing.T) {
 	}
 
 	dup := &Observation{
-		ID:        "obs-dup",
+		ID:        id,
 		Content:   "second",
 		Level:     LevelExplicit,
 		SessionID: "s1",
@@ -73,10 +77,11 @@ func TestMemoryStorage_Search(t *testing.T) {
 	storage := InMemory()
 	defer storage.Close()
 
+	id1, id2, id3 := idx.NewID(), idx.NewID(), idx.NewID()
 	observations := []*Observation{
-		{ID: "obs-1", Content: "user enjoys hiking", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
-		{ID: "obs-2", Content: "user works as engineer", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
-		{ID: "obs-3", Content: "user likes pizza", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
+		{ID: id1, Content: "user enjoys hiking", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
+		{ID: id2, Content: "user works as engineer", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
+		{ID: id3, Content: "user likes pizza", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
 	}
 
 	for _, obs := range observations {
@@ -96,8 +101,8 @@ func TestMemoryStorage_Search(t *testing.T) {
 	if len(results) != 1 {
 		t.Errorf("Expected 1 result, got %d", len(results))
 	}
-	if len(results) > 0 && results[0].Observation.ID != "obs-1" {
-		t.Errorf("Expected obs-1, got %s", results[0].Observation.ID)
+	if len(results) > 0 && results[0].Observation.ID != id1 {
+		t.Errorf("Expected %v, got %v", id1, results[0].Observation.ID)
 	}
 }
 
@@ -106,9 +111,10 @@ func TestMemoryStorage_Search_FilterBySessionID(t *testing.T) {
 	storage := InMemory()
 	defer storage.Close()
 
+	id1, id2 := idx.NewID(), idx.NewID()
 	observations := []*Observation{
-		{ID: "obs-s1", Content: "session one fact", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
-		{ID: "obs-s2", Content: "session two fact", Level: LevelExplicit, SessionID: "s2", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
+		{ID: id1, Content: "session one fact", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
+		{ID: id2, Content: "session two fact", Level: LevelExplicit, SessionID: "s2", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
 	}
 
 	for _, obs := range observations {
@@ -138,8 +144,9 @@ func TestMemoryStorage_Forget(t *testing.T) {
 	storage := InMemory()
 	defer storage.Close()
 
+	id := idx.NewID()
 	obs := &Observation{
-		ID:        "obs-delete",
+		ID:        id,
 		Content:   "to be deleted",
 		Level:     LevelExplicit,
 		SessionID: "s1",
@@ -150,11 +157,11 @@ func TestMemoryStorage_Forget(t *testing.T) {
 		t.Fatalf("Store() error = %v", err)
 	}
 
-	if err := storage.Forget(ctx, "obs-delete"); err != nil {
+	if err := storage.Forget(ctx, id); err != nil {
 		t.Fatalf("Forget() error = %v", err)
 	}
 
-	_, err := storage.GetByID(ctx, "obs-delete")
+	_, err := storage.GetByID(ctx, id)
 	if err == nil {
 		t.Error("Expected error for deleted observation")
 	}
@@ -165,10 +172,11 @@ func TestMemoryStorage_QueryMostDerived(t *testing.T) {
 	storage := InMemory()
 	defer storage.Close()
 
+	id1, id2, id3 := idx.NewID(), idx.NewID(), idx.NewID()
 	observations := []*Observation{
-		{ID: "obs-1", Content: "low derived", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 1, CreatedAt: time.Now()},
-		{ID: "obs-2", Content: "high derived", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 10, CreatedAt: time.Now().Add(-1 * time.Hour)},
-		{ID: "obs-3", Content: "medium derived", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 5, CreatedAt: time.Now().Add(-2 * time.Hour)},
+		{ID: id1, Content: "low derived", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 1, CreatedAt: time.Now()},
+		{ID: id2, Content: "high derived", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 10, CreatedAt: time.Now().Add(-1 * time.Hour)},
+		{ID: id3, Content: "medium derived", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 5, CreatedAt: time.Now().Add(-2 * time.Hour)},
 	}
 
 	for _, obs := range observations {
@@ -187,8 +195,8 @@ func TestMemoryStorage_QueryMostDerived(t *testing.T) {
 	}
 
 	// Should be ordered by TimesDerived DESC
-	if results[0].ID != "obs-2" {
-		t.Errorf("Expected obs-2 first, got %s", results[0].ID)
+	if results[0].ID != id2 {
+		t.Errorf("Expected %v first, got %v", id2, results[0].ID)
 	}
 }
 
@@ -198,10 +206,11 @@ func TestMemoryStorage_QueryRecent(t *testing.T) {
 	defer storage.Close()
 
 	now := time.Now()
+	idOld, idNew, idMiddle := idx.NewID(), idx.NewID(), idx.NewID()
 	observations := []*Observation{
-		{ID: "obs-old", Content: "old", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now.Add(-2 * time.Hour)},
-		{ID: "obs-new", Content: "new", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now},
-		{ID: "obs-middle", Content: "middle", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now.Add(-1 * time.Hour)},
+		{ID: idOld, Content: "old", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now.Add(-2 * time.Hour)},
+		{ID: idNew, Content: "new", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now},
+		{ID: idMiddle, Content: "middle", Level: LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now.Add(-1 * time.Hour)},
 	}
 
 	for _, obs := range observations {
@@ -220,8 +229,8 @@ func TestMemoryStorage_QueryRecent(t *testing.T) {
 	}
 
 	// Should be ordered by CreatedAt DESC (newest first)
-	if results[0].ID != "obs-new" {
-		t.Errorf("Expected obs-new first, got %s", results[0].ID)
+	if results[0].ID != idNew {
+		t.Errorf("Expected %v first, got %v", idNew, results[0].ID)
 	}
 }
 
@@ -230,8 +239,9 @@ func TestMemoryStorage_IncrementTimesDerived(t *testing.T) {
 	storage := InMemory()
 	defer storage.Close()
 
+	id := idx.NewID()
 	obs := &Observation{
-		ID:           "obs-increment",
+		ID:           id,
 		Content:      "test",
 		Level:        LevelExplicit,
 		SessionID:    "s1",
@@ -243,11 +253,11 @@ func TestMemoryStorage_IncrementTimesDerived(t *testing.T) {
 		t.Fatalf("Store() error = %v", err)
 	}
 
-	if err := storage.IncrementTimesDerived(ctx, "obs-increment"); err != nil {
+	if err := storage.IncrementTimesDerived(ctx, id); err != nil {
 		t.Fatalf("IncrementTimesDerived error = %v", err)
 	}
 
-	result, err := storage.GetByID(ctx, "obs-increment")
+	result, err := storage.GetByID(ctx, id)
 	if err != nil {
 		t.Fatalf("GetByID error = %v", err)
 	}
@@ -262,9 +272,10 @@ func TestMemoryStorage_Purge(t *testing.T) {
 	storage := InMemory()
 	defer storage.Close()
 
+	ids := []idx.ID{idx.NewID(), idx.NewID()}
 	for i, sessionID := range []string{"s1", "s2"} {
 		obs := &Observation{
-			ID:        "obs-purge-" + sessionID,
+			ID:        ids[i],
 			Content:   "content",
 			Level:     LevelExplicit,
 			SessionID: sessionID,
@@ -281,12 +292,12 @@ func TestMemoryStorage_Purge(t *testing.T) {
 		t.Fatalf("Purge() error = %v", err)
 	}
 
-	_, err := storage.GetByID(ctx, "obs-purge-s1")
+	_, err := storage.GetByID(ctx, ids[0])
 	if err == nil {
 		t.Error("Expected s1 observation to be purged")
 	}
 
-	_, err = storage.GetByID(ctx, "obs-purge-s2")
+	_, err = storage.GetByID(ctx, ids[1])
 	if err != nil {
 		t.Fatalf("s2 observation should still exist: %v", err)
 	}

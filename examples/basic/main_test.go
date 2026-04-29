@@ -13,7 +13,8 @@ import (
 
 	memory "github.com/ieshan/adk-go-memory"
 	"github.com/ieshan/adk-go-memory/adapter"
-	"github.com/ieshan/adk-go-memory/examples/internal/testutil"
+	"github.com/ieshan/adk-go-memory/internal/testutil"
+	"github.com/ieshan/idx"
 	adkagent "google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/model"
@@ -113,7 +114,7 @@ func TestBasicAgent_RecallsFromMemory(t *testing.T) {
 	storage := adapter.InMemory()
 
 	obs := &adapter.Observation{
-		ID:        "obs-1",
+		ID:        idx.NewID(),
 		Content:   "User is Alice, age 30",
 		Level:     adapter.LevelExplicit,
 		SessionID: "prev-sess",
@@ -221,8 +222,9 @@ func TestBasicAgent_Deduplication(t *testing.T) {
 	storage := adapter.InMemory()
 
 	// Pre-populate with observation
+	existingID := idx.NewID()
 	obs := &adapter.Observation{
-		ID:           "existing-obs",
+		ID:           existingID,
 		Content:      "user likes Go programming",
 		Level:        adapter.LevelExplicit,
 		SessionID:    "s1",
@@ -256,7 +258,7 @@ func TestBasicAgent_Deduplication(t *testing.T) {
 	}
 
 	// Verify original observation was incremented, not duplicated
-	result, err := storage.GetByID(ctx, "existing-obs")
+	result, err := storage.GetByID(ctx, existingID)
 	if err != nil {
 		t.Fatalf("GetByID error = %v", err)
 	}

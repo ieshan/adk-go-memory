@@ -1,17 +1,13 @@
 package memory
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
-	"google.golang.org/adk/agent"
-	"google.golang.org/adk/memory"
-	"google.golang.org/adk/session"
-	"google.golang.org/adk/tool/toolconfirmation"
-	"google.golang.org/genai"
+	"github.com/ieshan/adk-go-memory/internal/testutil"
+	"github.com/ieshan/idx"
 )
 
 func TestNewMemoryTool(t *testing.T) {
@@ -50,7 +46,7 @@ func TestMemoryTool_Run_WithResults(t *testing.T) {
 
 	// Pre-populate storage
 	obs := &adapter.Observation{
-		ID:        "obs-1",
+		ID:        idx.NewID(),
 		Content:   "user enjoys hiking on weekends",
 		Level:     adapter.LevelExplicit,
 		UserID:    "user1",
@@ -64,7 +60,7 @@ func TestMemoryTool_Run_WithResults(t *testing.T) {
 	provider := NewProvider(ProviderConfig{Storage: storage})
 	tool := NewMemoryTool(provider)
 
-	tc := &mockToolContext{userID: "user1", appName: "test-app"}
+	tc := testutil.NewFakeToolContext("user1", "test-app")
 	args := map[string]any{"query": "hiking"}
 	result, err := tool.Run(tc, args)
 	if err != nil {
@@ -89,7 +85,7 @@ func TestMemoryTool_Run_NoResults(t *testing.T) {
 	provider := NewProvider(ProviderConfig{Storage: storage})
 	tool := NewMemoryTool(provider)
 
-	tc := &mockToolContext{userID: "user1", appName: "test-app"}
+	tc := testutil.NewFakeToolContext("user1", "test-app")
 	args := map[string]any{"query": "nonexistent"}
 	result, err := tool.Run(tc, args)
 	if err != nil {
@@ -111,7 +107,7 @@ func TestMemoryTool_Run_MissingQuery(t *testing.T) {
 	provider := NewProvider(ProviderConfig{Storage: storage})
 	tool := NewMemoryTool(provider)
 
-	tc := &mockToolContext{userID: "user1", appName: "test-app"}
+	tc := testutil.NewFakeToolContext("user1", "test-app")
 	args := map[string]any{"max_results": 5.0}
 	_, err := tool.Run(tc, args)
 	if err == nil {
@@ -123,7 +119,7 @@ func TestMemoryTool_Run_EmptyQuery(t *testing.T) {
 	storage := adapter.InMemory()
 
 	obs := &adapter.Observation{
-		ID:        "obs-1",
+		ID:        idx.NewID(),
 		Content:   "some content",
 		Level:     adapter.LevelExplicit,
 		CreatedAt: time.Now(),
@@ -135,7 +131,7 @@ func TestMemoryTool_Run_EmptyQuery(t *testing.T) {
 	provider := NewProvider(ProviderConfig{Storage: storage})
 	tool := NewMemoryTool(provider)
 
-	tc := &mockToolContext{userID: "user1", appName: "test-app"}
+	tc := testutil.NewFakeToolContext("user1", "test-app")
 	args := map[string]any{"query": ""}
 	result, err := tool.Run(tc, args)
 	if err != nil {
@@ -154,7 +150,7 @@ func TestMemoryTool_Run_WithMaxResults(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		obs := &adapter.Observation{
-			ID:        fmt.Sprintf("obs-%d", i),
+			ID:        idx.NewID(),
 			Content:   fmt.Sprintf("test observation %d", i),
 			Level:     adapter.LevelExplicit,
 			CreatedAt: time.Now(),
@@ -167,7 +163,7 @@ func TestMemoryTool_Run_WithMaxResults(t *testing.T) {
 	provider := NewProvider(ProviderConfig{Storage: storage})
 	tool := NewMemoryTool(provider)
 
-	tc := &mockToolContext{userID: "user1", appName: "test-app"}
+	tc := testutil.NewFakeToolContext("user1", "test-app")
 	args := map[string]any{"query": "test", "max_results": 2.0}
 	result, err := tool.Run(tc, args)
 	if err != nil {
@@ -183,39 +179,3 @@ func TestMemoryTool_Run_WithMaxResults(t *testing.T) {
 		t.Errorf("Expected at most 2 results, got %d", len(observations))
 	}
 }
-
-// mockToolContext implements tool.Context for testing
-type mockToolContext struct {
-	userID  string
-	appName string
-}
-
-func (m *mockToolContext) FunctionCallID() string         { return "" }
-func (m *mockToolContext) Actions() *session.EventActions { return &session.EventActions{} }
-func (m *mockToolContext) SearchMemory(ctx context.Context, query string) (*memory.SearchResponse, error) {
-	return nil, nil
-}
-func (m *mockToolContext) ToolConfirmation() *toolconfirmation.ToolConfirmation { return nil }
-func (m *mockToolContext) RequestConfirmation(hint string, payload any) error   { return nil }
-func (m *mockToolContext) UserID() string                                       { return m.userID }
-func (m *mockToolContext) AppName() string                                      { return m.appName }
-func (m *mockToolContext) SessionID() string                                    { return "" }
-func (m *mockToolContext) AgentName() string                                    { return "" }
-func (m *mockToolContext) State() session.State                                 { return nil }
-func (m *mockToolContext) Artifacts() agent.Artifacts                           { return nil }
-func (m *mockToolContext) InvocationContext() agent.InvocationContext           { return nil }
-func (m *mockToolContext) EndInvocation()                                       {}
-func (m *mockToolContext) Ended() bool                                          { return false }
-func (m *mockToolContext) UserContent() *genai.Content {
-	return &genai.Content{Parts: []*genai.Part{{Text: ""}}}
-}
-func (m *mockToolContext) Context() context.Context             { return context.Background() }
-func (m *mockToolContext) Branch() string                       { return "" }
-func (m *mockToolContext) InvocationID() string                 { return "" }
-func (m *mockToolContext) ReadonlyState() session.ReadonlyState { return nil }
-
-// context.Context methods (tool.Context embeds context.Context)
-func (m *mockToolContext) Deadline() (deadline time.Time, ok bool) { return time.Time{}, false }
-func (m *mockToolContext) Done() <-chan struct{}                   { return nil }
-func (m *mockToolContext) Err() error                              { return nil }
-func (m *mockToolContext) Value(key any) any                       { return nil }

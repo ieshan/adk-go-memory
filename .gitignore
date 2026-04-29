@@ -143,6 +143,9 @@ fabric.properties
 __debug_bin
 
 # Examples binary
-examples/basic
+examples/basic/basic
+examples/httptool/httptool
+examples/memorytool/memorytool
+examples/subagents/subagents
 
 adk-go-memory.code-workspace

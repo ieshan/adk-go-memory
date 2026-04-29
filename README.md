@@ -148,9 +148,6 @@ The `Provider` wires together all memory components for comprehensive context as
 // ProviderConfig configures the Provider.
 type ProviderConfig struct {
     Storage       adapter.Storage                        // Storage backend
-    Deriver       *Deriver                               // Optional: Fact extraction
-    Summarizer    *Summarizer                            // Optional: Periodic summaries
-    Dialectic     *Dialectic                             // Optional: LLM-powered Q&A
     EmbeddingFunc func(ctx context.Context, text string) ([]float32, error) // For semantic search
 }
 
@@ -272,6 +269,71 @@ func (s *Summarizer) StoreSummary(ctx context.Context, sessionID string, summary
 
 // GetBothSummaries retrieves short and long summaries for a session.
 func (s *Summarizer) GetBothSummaries(ctx context.Context, sessionID string) (*Summary, *Summary, error)
+```
+
+### CompactionPlugin
+
+The `CompactionPlugin` provides session event compaction for context window management.
+
+```go
+// Config configures the compaction plugin.
+type Config struct {
+    Strategy   Strategy  // Required: TruncationStrategy, SummarizationStrategy, or CompositeStrategy
+    MaxEvents  int       // Trigger when event count exceeds this (0 = disabled)
+    MaxTokens  int       // Trigger when estimated tokens exceed this (0 = disabled)
+    Interval   int       // Trigger every N events (0 = disabled)
+    KeepRecent int       // Always preserve this many recent events (default: 10)
+    EnableAfterAgent bool // Enable post-run compaction check
+}
+
+// Create a truncation strategy (fast, keeps last N events)
+truncationStrategy := &compaction.TruncationStrategy{RetainCount: 50}
+
+// Create a summarization strategy (LLM-based summary)
+summaryStrategy := &compaction.SummarizationStrategy{
+    LLM: llm,  // Required for summarization
+    Instruction: "Custom prompt template",  // Optional
+}
+
+// Create the plugin
+plugin, err := compaction.NewPlugin(&compaction.Config{
+    Strategy:   truncationStrategy,
+    MaxEvents:  100,
+    MaxTokens:  4000,
+    KeepRecent: 20,
+})
+
+// Or use standalone callbacks for direct LlmAgent usage
+beforeCallback, err := compaction.BeforeModelCallback(config)
+afterCallback, err := compaction.AfterAgentCallback(config)
+```
+
+### BackgroundCompactor
+
+The `BackgroundCompactor` provides APIs for external background compaction jobs.
+
+```go
+// Create a background compactor
+bc := compaction.NewBackgroundCompactor(storage, llm)
+
+// Query observations for compaction
+candidates, err := bc.QueryObservationsForCompaction(ctx, compaction.CompactionQueryOptions{
+    OlderThan:  time.Now().Add(-30 * 24 * time.Hour),  // 30 days old
+    MinAge:     7 * 24 * time.Hour,                   // At least 7 days
+    MaxResults: 100,
+})
+
+// Create a summary from observations
+summary, err := bc.CreateCompactionSummary(ctx, candidates, compaction.SummaryOptions{
+    Instruction: "Consolidate these observations",
+    Tags:        []string{"archived"},
+})
+
+// Archive observations (soft delete)
+err = bc.ArchiveObservations(ctx, []string{"obs-1", "obs-2"})
+
+// Purge archived observations older than cutoff
+count, err := bc.PurgeArchivedObservations(ctx, time.Now().Add(-90*24*time.Hour))
 ```
 
 ### Dialectic
@@ -607,9 +669,9 @@ func main() {
     defer svc.Close()
 
     // Create memory kit with tools
-    kit, err := memory.NewMemoryKit(memory.MemoryKitConfig{
+    kit, err := memory.New(memory.KitConfig{
         Storage: storage,
-        Deriver: deriver,
+        LLM:     modelLLM,
     })
     if err != nil {
         log.Fatalf("Failed to create memory kit: %v", err)
@@ -961,6 +1023,95 @@ func getLLM() model.LLM {
 }
 ```
 
+### Agent with Memory Compaction
+
+For long-running conversations, use the compaction plugin to manage context window size:
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    memory "github.com/ieshan/adk-go-memory"
+    "github.com/ieshan/adk-go-memory/adapter"
+    "github.com/ieshan/adk-go-memory/adapter/sqlite"
+    "github.com/ieshan/adk-go-memory/compaction"
+    adkagent "google.golang.org/adk/agent"
+    "google.golang.org/adk/agent/llmagent"
+    "google.golang.org/adk/model"
+    "google.golang.org/adk/plugin"
+    "google.golang.org/adk/runner"
+    "google.golang.org/adk/session"
+)
+
+func main() {
+    ctx := context.Background()
+
+    // Setup storage
+    storage, err := sqlite.NewSQLiteStorage("/data/memory.db")
+    if err != nil {
+        log.Fatalf("Failed to create storage: %v", err)
+    }
+    defer storage.Close()
+
+    modelLLM := getLLM()
+
+    // Create memory kit with compaction enabled
+    kit, err := memory.New(memory.KitConfig{
+        Storage: storage,
+        LLM:     modelLLM,
+        Compaction: &compaction.Config{
+            // Use summarization strategy for intelligent compaction
+            Strategy:   &compaction.SummarizationStrategy{LLM: modelLLM},
+            MaxEvents:  100,  // Compact when > 100 events
+            MaxTokens:  4000, // Compact when > 4000 tokens
+            KeepRecent: 20,   // Always keep 20 most recent events
+        },
+        DeltaMode: true, // Only process new events in AddSessionToMemory
+    })
+    if err != nil {
+        log.Fatalf("Failed to create memory kit: %v", err)
+    }
+    defer kit.Close()
+
+    // Create agent
+    agent, err := llmagent.New(llmagent.Config{
+        Name:        "compaction_assistant",
+        Model:       modelLLM,
+        Description: "Assistant with memory compaction for long conversations",
+        Instruction: "You are a helpful assistant with long-term memory.",
+    })
+    if err != nil {
+        log.Fatalf("Failed to create agent: %v", err)
+    }
+
+    // Create runner with compaction plugin
+    r, err := runner.New(runner.Config{
+        AppName:           "compaction_app",
+        Agent:             agent,
+        SessionService:    session.InMemoryService(),
+        MemoryService:     kit.Service,
+        AutoCreateSession: true,
+        PluginConfig: runner.PluginConfig{
+            Plugins: []*plugin.Plugin{kit.Plugin}, // Add compaction plugin
+        },
+    })
+    if err != nil {
+        log.Fatalf("Failed to create runner: %v", err)
+    }
+
+    // The runner now automatically compacts sessions when thresholds are exceeded
+    _ = r
+}
+
+func getLLM() model.LLM {
+    // Return your LLM implementation
+    return nil
+}
+```
+
 ## Architecture
 
 ### Core Components
@@ -1198,6 +1349,57 @@ make clean         # Clean artifacts
 **SQLite adapter** (`adapter/sqlite` submodule - requires CGO):
 - `github.com/asg017/sqlite-vec-go-bindings` - Vector search for SQLite
 - `github.com/mattn/go-sqlite3` - SQLite driver
+
+## Migration Guide
+
+### From Old API to New API (v2)
+
+If you were using the old `NewMemoryKit` function, migrate to the new `New` function:
+
+**Old API (deprecated):**
+```go
+kit, err := memory.NewMemoryKit(memory.MemoryKitConfig{
+    Storage: storage,
+    Deriver: deriver,
+})
+```
+
+**New API:**
+```go
+kit, err := memory.New(memory.KitConfig{
+    Storage: storage,
+    LLM:     llm,  // Deriver created internally if LLM provided
+    Compaction: &compaction.Config{
+        Strategy:   &compaction.SummarizationStrategy{LLM: llm},
+        MaxEvents:  100,
+        MaxTokens:  4000,
+    },
+})
+```
+
+### Key Changes
+
+| Old | New |
+|-----|-----|
+| `NewMemoryKit()` | `New()` |
+| `MemoryKitConfig` | `KitConfig` |
+| Manual Deriver creation | LLM auto-creates Deriver |
+| No compaction support | Built-in compaction plugin |
+| Manual component wiring | One-stop `MemoryKit` |
+
+### Component Access
+
+```go
+// Both old and new use the same component names
+kit.Service     // memory.Service
+kit.Provider    // *Provider
+kit.LoadTool    // tool.Tool
+kit.PreloadTool // tool.Tool
+kit.Tools       // []tool.Tool
+
+// New in v2:
+kit.Plugin      // *plugin.Plugin (compaction, if configured)
+```
 
 ## License
 

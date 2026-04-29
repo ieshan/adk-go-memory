@@ -48,13 +48,10 @@ func main() {
 		log.Fatalf("Failed to create LLM: %v", err)
 	}
 
-	// Create memory kit with all components (ADK-Go v1.2.0 pattern)
-	kit, err := memory.NewMemoryKit(memory.MemoryKitConfig{
+	// Create memory kit with all components (ADK-Go v1.2.0+ pattern)
+	kit, err := memory.New(memory.KitConfig{
 		Storage: storage,
-		Deriver: memory.NewDeriver(memory.DeriverConfig{
-			LLM:     modelLLM,
-			Storage: storage,
-		}),
+		LLM:     modelLLM,
 	})
 	if err != nil {
 		log.Fatalf("Failed to create memory kit: %v", err)

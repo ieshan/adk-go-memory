@@ -41,21 +41,34 @@ func main() {
 
 	modelLLM := getLLM()
 
-	// Create deriver for automatic fact extraction
-	deriver := memory.NewDeriver(memory.DeriverConfig{
-		LLM:     modelLLM,
-		Storage: storage,
-	})
-
 	// Create memory kit with all components and tools
-	kit, err := memory.NewMemoryKit(memory.MemoryKitConfig{
+	kit, err := memory.New(memory.KitConfig{
 		Storage: storage,
-		Deriver: deriver,
+		LLM:     modelLLM,
 	})
 	if err != nil {
 		log.Fatalf("Failed to create memory kit: %v", err)
 	}
 	defer kit.Close()
+
+	// Example with compaction enabled (uncomment to use):
+	/*
+		kit, err = memory.New(memory.KitConfig{
+			Storage: storage,
+			LLM:     modelLLM,
+			Compaction: &compaction.Config{
+				Strategy:   &compaction.SummarizationStrategy{LLM: modelLLM},
+				MaxEvents:  50,
+				MaxTokens:  2000,
+				KeepRecent: 10,
+			},
+			DeltaMode: true,
+		})
+		if err != nil {
+			log.Fatalf("Failed to create memory kit with compaction: %v", err)
+		}
+		defer kit.Close()
+	*/
 
 	// Create agent with memory tool
 	agent, err := llmagent.New(llmagent.Config{
@@ -76,6 +89,17 @@ Example queries: "user preferences", "user name", "user hobbies", "past activiti
 	}
 
 	// Create runner
+	// With compaction plugin (requires kit.Plugin to be set):
+	// runner.New(runner.Config{
+	//     AppName:           appName,
+	//     Agent:             agent,
+	//     SessionService:    sessionService,
+	//     MemoryService:     kit.Service,
+	//     AutoCreateSession: true,
+	//     PluginConfig: runner.PluginConfig{
+	//         Plugins: []*plugin.Plugin{kit.Plugin},
+	//     },
+	// })
 	appName := "memory_tool_app"
 	sessionService := session.InMemoryService()
 	r, err := runner.New(runner.Config{

@@ -2,13 +2,12 @@ package memory
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
-	"math"
 	"testing"
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
+	"github.com/ieshan/adk-go-memory/internal/testutil"
+	"github.com/ieshan/idx"
 )
 
 func TestRepresentationManager_StrategyOrdering(t *testing.T) {
@@ -17,9 +16,12 @@ func TestRepresentationManager_StrategyOrdering(t *testing.T) {
 
 	now := time.Now()
 	// Create observations with specific TimesDerived and timestamps
+	idRecentLow := idx.NewID()
+	idOldHigh := idx.NewID()
+	idMiddleMedium := idx.NewID()
 	observations := []*adapter.Observation{
 		{
-			ID:           "obs-recent-low",
+			ID:           idRecentLow,
 			Content:      "recent but low derived",
 			Level:        adapter.LevelExplicit,
 			SessionID:    "s1",
@@ -29,7 +31,7 @@ func TestRepresentationManager_StrategyOrdering(t *testing.T) {
 			CreatedAt:    now,
 		},
 		{
-			ID:           "obs-old-high",
+			ID:           idOldHigh,
 			Content:      "old but high derived",
 			Level:        adapter.LevelExplicit,
 			SessionID:    "s1",
@@ -39,7 +41,7 @@ func TestRepresentationManager_StrategyOrdering(t *testing.T) {
 			CreatedAt:    now.Add(-24 * time.Hour),
 		},
 		{
-			ID:           "obs-middle-medium",
+			ID:           idMiddleMedium,
 			Content:      "middle age and medium derived",
 			Level:        adapter.LevelExplicit,
 			SessionID:    "s1",
@@ -79,31 +81,31 @@ func TestRepresentationManager_StrategyOrdering(t *testing.T) {
 		t.Fatalf("GetWorkingRepresentation error = %v", err)
 	}
 
-	// Check that most-derived section contains obs-old-high
+	// Check that most-derived section contains the high-derived observation
 	// Derived observations start after semantic observations
 	derivedStart := rep.SemanticCount
 	foundHighDerived := false
 	for i := derivedStart; i < derivedStart+rep.DerivedCount && i < len(rep.Observations); i++ {
-		if rep.Observations[i].ID == "obs-old-high" {
+		if rep.Observations[i].ID == idOldHigh {
 			foundHighDerived = true
 			break
 		}
 	}
 	if !foundHighDerived {
-		t.Error("Expected obs-old-high (highest TimesDerived) in derived observations")
+		t.Error("Expected high-derived observation in derived observations")
 	}
 
-	// Check that recent section contains obs-recent-low
+	// Check that recent section contains the recent observation
 	recentStart := rep.SemanticCount + rep.DerivedCount
 	foundRecent := false
 	for i := recentStart; i < recentStart+rep.RecentCount && i < len(rep.Observations); i++ {
-		if rep.Observations[i].ID == "obs-recent-low" {
+		if rep.Observations[i].ID == idRecentLow {
 			foundRecent = true
 			break
 		}
 	}
 	if !foundRecent {
-		t.Error("Expected obs-recent-low (most recent) in recent observations")
+		t.Error("Expected recent observation in recent observations")
 	}
 }
 
@@ -113,15 +115,16 @@ func TestRepresentationManager_NoDuplicates(t *testing.T) {
 
 	now := time.Now()
 	// Single observation that would appear in all three strategies
+	obsID := idx.NewID()
 	obs := &adapter.Observation{
-		ID:           "obs-unique",
+		ID:           obsID,
 		Content:      "the only observation",
 		Level:        adapter.LevelExplicit,
 		SessionID:    "s1",
 		UserID:       "u1",
 		AppName:      "a1",
 		TimesDerived: 100,
-		Embedding:    fakeEmbedding("the only observation"),
+		Embedding:    testutil.FakeEmbedding("the only observation"),
 		CreatedAt:    now,
 	}
 	if err := storage.Store(ctx, obs); err != nil {
@@ -129,7 +132,7 @@ func TestRepresentationManager_NoDuplicates(t *testing.T) {
 	}
 
 	embedFn := func(ctx context.Context, text string) ([]float32, error) {
-		return fakeEmbedding("test"), nil
+		return testutil.FakeEmbedding("test"), nil
 	}
 
 	rm := NewRepresentationManager(RepresentationConfig{
@@ -146,13 +149,13 @@ func TestRepresentationManager_NoDuplicates(t *testing.T) {
 	}
 
 	// The same observation should appear only once
-	ids := make(map[string]int)
+	ids := make(map[idx.ID]int)
 	for _, o := range rep.Observations {
 		ids[o.ID]++
 	}
 	for id, count := range ids {
 		if count > 1 {
-			t.Errorf("Observation %s appeared %d times, should be deduplicated", id, count)
+			t.Errorf("Observation %s appeared %d times, should be deduplicated", id.String(), count)
 		}
 	}
 
@@ -167,7 +170,7 @@ func TestRepresentationManager_EmptyStorage(t *testing.T) {
 	storage := adapter.InMemory()
 
 	embedFn := func(ctx context.Context, text string) ([]float32, error) {
-		return fakeEmbedding("test"), nil
+		return testutil.FakeEmbedding("test"), nil
 	}
 
 	rm := NewRepresentationManager(RepresentationConfig{
@@ -197,7 +200,7 @@ func TestRepresentationManager_NoEmbeddingFunc(t *testing.T) {
 	storage := adapter.InMemory()
 
 	obs := &adapter.Observation{
-		ID:           "obs-1",
+		ID:           idx.NewID(),
 		Content:      "test observation",
 		Level:        adapter.LevelExplicit,
 		SessionID:    "s1",
@@ -235,9 +238,9 @@ func TestRepresentationManager_NoEmbeddingFunc(t *testing.T) {
 func TestWorkingRepresentation_Format(t *testing.T) {
 	rep := &WorkingRepresentation{
 		Observations: []adapter.Observation{
-			{ID: "obs-1", Content: "semantic fact"},
-			{ID: "obs-2", Content: "derived fact"},
-			{ID: "obs-3", Content: "recent fact"},
+			{ID: idx.NewID(), Content: "semantic fact"},
+			{ID: idx.NewID(), Content: "derived fact"},
+			{ID: idx.NewID(), Content: "recent fact"},
 		},
 		SemanticCount: 1,
 		DerivedCount:  1,
@@ -268,19 +271,4 @@ func containsStr(s, substr string) bool {
 		}
 	}
 	return false
-}
-
-// fakeEmbedding generates a deterministic 1536-dim float32 vector from text.
-// Uses SHA-256 hash of text to seed the vector values for reproducible tests.
-func fakeEmbedding(text string) []float32 {
-	hash := sha256.Sum256([]byte(text))
-	vec := make([]float32, 1536)
-
-	for i := 0; i < 1536; i++ {
-		idx := (i * 4) % len(hash)
-		val := binary.BigEndian.Uint32(hash[idx:])
-		vec[i] = (float32(val)/float32(math.MaxUint32))*2 - 1
-	}
-
-	return vec
 }

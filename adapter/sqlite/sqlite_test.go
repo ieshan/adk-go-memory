@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
+	"github.com/ieshan/idx"
 )
 
 func TestSQLiteStorage_VectorSearch(t *testing.T) {
@@ -18,9 +19,12 @@ func TestSQLiteStorage_VectorSearch(t *testing.T) {
 
 	// Create observations with embeddings
 	// "golang" and "programming" should be closer to "Go" query than "pizza"
+	idGo := idx.NewID()
+	idPizza := idx.NewID()
+	idPy := idx.NewID()
 	observations := []*adapter.Observation{
 		{
-			ID:        "obs-go",
+			ID:        idGo,
 			Content:   "user likes Go programming",
 			Level:     adapter.LevelExplicit,
 			SessionID: "s1",
@@ -30,7 +34,7 @@ func TestSQLiteStorage_VectorSearch(t *testing.T) {
 			CreatedAt: time.Now(),
 		},
 		{
-			ID:        "obs-pizza",
+			ID:        idPizza,
 			Content:   "user enjoys pizza",
 			Level:     adapter.LevelExplicit,
 			SessionID: "s1",
@@ -40,7 +44,7 @@ func TestSQLiteStorage_VectorSearch(t *testing.T) {
 			CreatedAt: time.Now(),
 		},
 		{
-			ID:        "obs-py",
+			ID:        idPy,
 			Content:   "user knows Python",
 			Level:     adapter.LevelExplicit,
 			SessionID: "s1",
@@ -91,7 +95,7 @@ func TestSQLiteStorage_VectorSearch(t *testing.T) {
 	// check that results are returned and have valid properties.
 	foundProgramming := false
 	for _, r := range results {
-		if r.Observation.ID == "obs-go" || r.Observation.ID == "obs-py" {
+		if r.Observation.ID == idGo || r.Observation.ID == idPy {
 			foundProgramming = true
 			break
 		}
@@ -110,9 +114,11 @@ func TestSQLiteStorage_HybridSearch(t *testing.T) {
 	defer storage.Close()
 
 	// Create observations - some match FTS better, some match vector better
+	idGoText := idx.NewID()
+	idGoVec := idx.NewID()
 	observations := []*adapter.Observation{
 		{
-			ID:           "obs-go-text",
+			ID:           idGoText,
 			Content:      "Go is a programming language created at Google",
 			Level:        adapter.LevelExplicit,
 			SessionID:    "s1",
@@ -123,7 +129,7 @@ func TestSQLiteStorage_HybridSearch(t *testing.T) {
 			CreatedAt:    time.Now().Add(-1 * time.Hour),
 		},
 		{
-			ID:           "obs-go-vec",
+			ID:           idGoVec,
 			Content:      "The user mentioned they use Golang for backend work",
 			Level:        adapter.LevelExplicit,
 			SessionID:    "s1",
@@ -160,7 +166,7 @@ func TestSQLiteStorage_HybridSearch(t *testing.T) {
 	}
 
 	// Both observations should appear (RRF fusion should combine them)
-	ids := make(map[string]bool)
+	ids := make(map[idx.ID]bool)
 	rrfCount := 0
 	for _, r := range results {
 		ids[r.Observation.ID] = true
@@ -169,10 +175,10 @@ func TestSQLiteStorage_HybridSearch(t *testing.T) {
 		}
 	}
 
-	if !ids["obs-go-text"] {
+	if !ids[idGoText] {
 		t.Error("Expected obs-go-text in hybrid results (FTS match)")
 	}
-	if !ids["obs-go-vec"] {
+	if !ids[idGoVec] {
 		t.Error("Expected obs-go-vec in hybrid results (vector match)")
 	}
 	if rrfCount == 0 {
@@ -188,10 +194,13 @@ func TestSQLiteStorage_QueryMostDerived(t *testing.T) {
 	}
 	defer storage.Close()
 
+	idLow := idx.NewID()
+	idHigh := idx.NewID()
+	idMedium := idx.NewID()
 	observations := []*adapter.Observation{
-		{ID: "obs-1", Content: "low derived", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 1, CreatedAt: time.Now()},
-		{ID: "obs-2", Content: "high derived", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 10, CreatedAt: time.Now().Add(-1 * time.Hour)},
-		{ID: "obs-3", Content: "medium derived", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 5, CreatedAt: time.Now().Add(-2 * time.Hour)},
+		{ID: idLow, Content: "low derived", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 1, CreatedAt: time.Now()},
+		{ID: idHigh, Content: "high derived", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 10, CreatedAt: time.Now().Add(-1 * time.Hour)},
+		{ID: idMedium, Content: "medium derived", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", TimesDerived: 5, CreatedAt: time.Now().Add(-2 * time.Hour)},
 	}
 
 	for _, obs := range observations {
@@ -210,14 +219,14 @@ func TestSQLiteStorage_QueryMostDerived(t *testing.T) {
 	}
 
 	// Should be ordered by TimesDerived DESC
-	if results[0].ID != "obs-2" || results[0].TimesDerived != 10 {
-		t.Errorf("Expected obs-2 (TimesDerived=10) first, got %s (TimesDerived=%d)", results[0].ID, results[0].TimesDerived)
+	if results[0].ID != idHigh || results[0].TimesDerived != 10 {
+		t.Errorf("Expected high-derived (TimesDerived=10) first, got %s (TimesDerived=%d)", results[0].ID.String(), results[0].TimesDerived)
 	}
-	if results[1].ID != "obs-3" || results[1].TimesDerived != 5 {
-		t.Errorf("Expected obs-3 (TimesDerived=5) second, got %s (TimesDerived=%d)", results[1].ID, results[1].TimesDerived)
+	if results[1].ID != idMedium || results[1].TimesDerived != 5 {
+		t.Errorf("Expected medium-derived (TimesDerived=5) second, got %s (TimesDerived=%d)", results[1].ID.String(), results[1].TimesDerived)
 	}
-	if results[2].ID != "obs-1" || results[2].TimesDerived != 1 {
-		t.Errorf("Expected obs-1 (TimesDerived=1) third, got %s (TimesDerived=%d)", results[2].ID, results[2].TimesDerived)
+	if results[2].ID != idLow || results[2].TimesDerived != 1 {
+		t.Errorf("Expected low-derived (TimesDerived=1) third, got %s (TimesDerived=%d)", results[2].ID.String(), results[2].TimesDerived)
 	}
 }
 
@@ -230,10 +239,13 @@ func TestSQLiteStorage_QueryRecent(t *testing.T) {
 	defer storage.Close()
 
 	now := time.Now()
+	idOld := idx.NewID()
+	idNew := idx.NewID()
+	idMiddle := idx.NewID()
 	observations := []*adapter.Observation{
-		{ID: "obs-old", Content: "old", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now.Add(-2 * time.Hour)},
-		{ID: "obs-new", Content: "new", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now},
-		{ID: "obs-middle", Content: "middle", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now.Add(-1 * time.Hour)},
+		{ID: idOld, Content: "old", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now.Add(-2 * time.Hour)},
+		{ID: idNew, Content: "new", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now},
+		{ID: idMiddle, Content: "middle", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now.Add(-1 * time.Hour)},
 	}
 
 	for _, obs := range observations {
@@ -252,14 +264,14 @@ func TestSQLiteStorage_QueryRecent(t *testing.T) {
 	}
 
 	// Should be ordered by CreatedAt DESC (newest first)
-	if results[0].ID != "obs-new" {
-		t.Errorf("Expected obs-new first (newest), got %s", results[0].ID)
+	if results[0].ID != idNew {
+		t.Errorf("Expected new observation first (newest), got %s", results[0].ID.String())
 	}
-	if results[1].ID != "obs-middle" {
-		t.Errorf("Expected obs-middle second, got %s", results[1].ID)
+	if results[1].ID != idMiddle {
+		t.Errorf("Expected middle observation second, got %s", results[1].ID.String())
 	}
-	if results[2].ID != "obs-old" {
-		t.Errorf("Expected obs-old third (oldest), got %s", results[2].ID)
+	if results[2].ID != idOld {
+		t.Errorf("Expected old observation third (oldest), got %s", results[2].ID.String())
 	}
 }
 
@@ -271,8 +283,9 @@ func TestSQLiteStorage_Forget_SyncsVirtualTables(t *testing.T) {
 	}
 	defer storage.Close()
 
+	idDelete := idx.NewID()
 	obs := &adapter.Observation{
-		ID:        "obs-delete",
+		ID:        idDelete,
 		Content:   "to be deleted",
 		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
@@ -297,12 +310,12 @@ func TestSQLiteStorage_Forget_SyncsVirtualTables(t *testing.T) {
 	}
 
 	// Delete it
-	if err := storage.Forget(ctx, "obs-delete"); err != nil {
+	if err := storage.Forget(ctx, idDelete); err != nil {
 		t.Fatalf("Forget() error = %v", err)
 	}
 
 	// Verify it's gone from main table
-	_, err = storage.GetByID(ctx, "obs-delete")
+	_, err = storage.GetByID(ctx, idDelete)
 	if err == nil {
 		t.Error("Expected observation to be deleted from main table")
 	}
@@ -314,7 +327,7 @@ func TestSQLiteStorage_Forget_SyncsVirtualTables(t *testing.T) {
 		Mode:       adapter.SearchModeFTS,
 	})
 	for _, r := range ftsResults {
-		if r.Observation.ID == "obs-delete" {
+		if r.Observation.ID == idDelete {
 			t.Error("Observation still found in FTS after deletion")
 		}
 	}
@@ -328,8 +341,9 @@ func TestSQLiteStorage_IncrementTimesDerived(t *testing.T) {
 	}
 	defer storage.Close()
 
+	idIncrement := idx.NewID()
 	obs := &adapter.Observation{
-		ID:           "obs-increment",
+		ID:           idIncrement,
 		Content:      "test content",
 		Level:        adapter.LevelExplicit,
 		SessionID:    "s1",
@@ -344,12 +358,12 @@ func TestSQLiteStorage_IncrementTimesDerived(t *testing.T) {
 	}
 
 	// Increment times_derived
-	if err := storage.IncrementTimesDerived(ctx, "obs-increment"); err != nil {
+	if err := storage.IncrementTimesDerived(ctx, idIncrement); err != nil {
 		t.Fatalf("IncrementTimesDerived error = %v", err)
 	}
 
 	// Verify
-	result, err := storage.GetByID(ctx, "obs-increment")
+	result, err := storage.GetByID(ctx, idIncrement)
 	if err != nil {
 		t.Fatalf("GetByID error = %v", err)
 	}
@@ -368,8 +382,9 @@ func TestSQLiteStorage_StoreGetByID_RoundTrip(t *testing.T) {
 	defer storage.Close()
 
 	now := time.Now().Truncate(time.Second) // Truncate for SQLite DATETIME precision
+	idFull := idx.NewID()
 	obs := &adapter.Observation{
-		ID:           "obs-full",
+		ID:           idFull,
 		Content:      "full round trip test",
 		Level:        adapter.LevelDeductive,
 		SessionID:    "s1",
@@ -385,7 +400,7 @@ func TestSQLiteStorage_StoreGetByID_RoundTrip(t *testing.T) {
 		t.Fatalf("Store() error = %v", err)
 	}
 
-	result, err := storage.GetByID(ctx, "obs-full")
+	result, err := storage.GetByID(ctx, idFull)
 	if err != nil {
 		t.Fatalf("GetByID() error = %v", err)
 	}
@@ -427,8 +442,9 @@ func TestSQLiteStorage_StoreGetByID_NoTagsNoEmbedding(t *testing.T) {
 	}
 	defer storage.Close()
 
+	idMinimal := idx.NewID()
 	obs := &adapter.Observation{
-		ID:        "obs-minimal",
+		ID:        idMinimal,
 		Content:   "minimal observation",
 		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
@@ -439,7 +455,7 @@ func TestSQLiteStorage_StoreGetByID_NoTagsNoEmbedding(t *testing.T) {
 		t.Fatalf("Store() error = %v", err)
 	}
 
-	result, err := storage.GetByID(ctx, "obs-minimal")
+	result, err := storage.GetByID(ctx, idMinimal)
 	if err != nil {
 		t.Fatalf("GetByID() error = %v", err)
 	}
@@ -460,7 +476,7 @@ func TestSQLiteStorage_GetByID_NotFound(t *testing.T) {
 	}
 	defer storage.Close()
 
-	_, err = storage.GetByID(ctx, "nonexistent")
+	_, err = storage.GetByID(ctx, idx.NewID())
 	if err == nil {
 		t.Error("Expected error for nonexistent ID")
 	}
@@ -474,8 +490,9 @@ func TestSQLiteStorage_Store_DuplicateID(t *testing.T) {
 	}
 	defer storage.Close()
 
+	idDup := idx.NewID()
 	obs := &adapter.Observation{
-		ID:        "obs-dup",
+		ID:        idDup,
 		Content:   "first",
 		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
@@ -487,7 +504,7 @@ func TestSQLiteStorage_Store_DuplicateID(t *testing.T) {
 
 	// Store again with same ID
 	dup := &adapter.Observation{
-		ID:        "obs-dup",
+		ID:        idDup,
 		Content:   "second",
 		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
@@ -507,8 +524,8 @@ func TestSQLiteStorage_Search_DefaultModeIsHybrid(t *testing.T) {
 	defer storage.Close()
 
 	observations := []*adapter.Observation{
-		{ID: "obs-1", Content: "Go is a programming language", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", Embedding: fakeEmbedding("golang programming"), CreatedAt: time.Now()},
-		{ID: "obs-2", Content: "user enjoys hiking", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", Embedding: fakeEmbedding("outdoor hiking nature"), CreatedAt: time.Now()},
+		{ID: idx.NewID(), Content: "Go is a programming language", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", Embedding: fakeEmbedding("golang programming"), CreatedAt: time.Now()},
+		{ID: idx.NewID(), Content: "user enjoys hiking", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", Embedding: fakeEmbedding("outdoor hiking nature"), CreatedAt: time.Now()},
 	}
 	for _, obs := range observations {
 		if err := storage.Store(ctx, obs); err != nil {
@@ -556,7 +573,7 @@ func TestSQLiteStorage_SearchDoesNotMutateOpts(t *testing.T) {
 	defer storage.Close()
 
 	obs := &adapter.Observation{
-		ID:        "obs-mutate",
+		ID:        idx.NewID(),
 		Content:   "test mutation",
 		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
@@ -591,9 +608,12 @@ func TestSQLiteStorage_Purge(t *testing.T) {
 	defer storage.Close()
 
 	// Store observations in two sessions
+	ids := make(map[string]idx.ID)
 	for i, sessionID := range []string{"s1", "s2"} {
+		id := idx.NewID()
+		ids[sessionID] = id
 		obs := &adapter.Observation{
-			ID:        "obs-purge-" + sessionID,
+			ID:        id,
 			Content:   "content for " + sessionID,
 			Level:     adapter.LevelExplicit,
 			SessionID: sessionID,
@@ -612,18 +632,18 @@ func TestSQLiteStorage_Purge(t *testing.T) {
 	}
 
 	// s1 observation should be gone
-	_, err = storage.GetByID(ctx, "obs-purge-s1")
+	_, err = storage.GetByID(ctx, ids["s1"])
 	if err == nil {
 		t.Error("Expected s1 observation to be purged")
 	}
 
 	// s2 observation should still exist
-	result, err := storage.GetByID(ctx, "obs-purge-s2")
+	result, err := storage.GetByID(ctx, ids["s2"])
 	if err != nil {
 		t.Fatalf("GetByID(s2) error = %v", err)
 	}
-	if result.ID != "obs-purge-s2" {
-		t.Errorf("s2 observation ID = %q, want 'obs-purge-s2'", result.ID)
+	if result.ID != ids["s2"] {
+		t.Errorf("s2 observation ID = %q, want %q", result.ID.String(), ids["s2"].String())
 	}
 }
 
@@ -635,10 +655,11 @@ func TestSQLiteStorage_FTSSearch(t *testing.T) {
 	}
 	defer storage.Close()
 
+	idObs1 := idx.NewID()
 	observations := []*adapter.Observation{
-		{ID: "obs-1", Content: "user enjoys hiking on weekends", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
-		{ID: "obs-2", Content: "user works as a software engineer", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
-		{ID: "obs-3", Content: "user likes pizza", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
+		{ID: idObs1, Content: "user enjoys hiking on weekends", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
+		{ID: idx.NewID(), Content: "user works as a software engineer", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
+		{ID: idx.NewID(), Content: "user likes pizza", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
 	}
 
 	for _, obs := range observations {
@@ -663,13 +684,13 @@ func TestSQLiteStorage_FTSSearch(t *testing.T) {
 	// obs-1 should be the best match
 	found := false
 	for _, r := range results {
-		if r.Observation.ID == "obs-1" {
+		if r.Observation.ID == idObs1 {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Error("Expected obs-1 (hiking) in FTS results")
+		t.Error("Expected hiking observation in FTS results")
 	}
 }
 
@@ -682,7 +703,7 @@ func TestSQLiteStorage_FTSSearch_EmptyQuery(t *testing.T) {
 	defer storage.Close()
 
 	obs := &adapter.Observation{
-		ID:        "obs-empty-q",
+		ID:        idx.NewID(),
 		Content:   "some content",
 		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
@@ -736,7 +757,7 @@ func TestSQLiteStorage_IncrementTimesDerived_NotFound(t *testing.T) {
 	defer storage.Close()
 
 	// IncrementTimesDerived on nonexistent ID should return an error
-	if err := storage.IncrementTimesDerived(ctx, "nonexistent"); err == nil {
+	if err := storage.IncrementTimesDerived(ctx, idx.NewID()); err == nil {
 		t.Error("Expected error for IncrementTimesDerived on nonexistent ID")
 	}
 }
@@ -750,7 +771,7 @@ func TestSQLiteStorage_Forget_NonexistentID(t *testing.T) {
 	defer storage.Close()
 
 	// Forget on nonexistent ID should return nil (idempotent delete)
-	if err := storage.Forget(ctx, "nonexistent"); err != nil {
+	if err := storage.Forget(ctx, idx.NewID()); err != nil {
 		t.Errorf("Forget(nonexistent) error = %v", err)
 	}
 }
@@ -763,9 +784,10 @@ func TestSQLiteStorage_Search_FilterBySessionID(t *testing.T) {
 	}
 	defer storage.Close()
 
+	idS2 := idx.NewID()
 	observations := []*adapter.Observation{
-		{ID: "obs-s1", Content: "session one fact", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
-		{ID: "obs-s2", Content: "session two fact", Level: adapter.LevelExplicit, SessionID: "s2", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
+		{ID: idx.NewID(), Content: "session one fact", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
+		{ID: idS2, Content: "session two fact", Level: adapter.LevelExplicit, SessionID: "s2", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
 	}
 
 	for _, obs := range observations {
@@ -793,8 +815,8 @@ func TestSQLiteStorage_Search_FilterBySessionID(t *testing.T) {
 
 	// Verify s2 observation is not in results
 	for _, r := range results {
-		if r.Observation.ID == "obs-s2" {
-			t.Error("obs-s2 should not appear in s1-scoped search")
+		if r.Observation.ID == idS2 {
+			t.Error("s2 observation should not appear in s1-scoped search")
 		}
 	}
 }
@@ -808,8 +830,8 @@ func TestSQLiteStorage_Search_FilterByUserID(t *testing.T) {
 	defer storage.Close()
 
 	observations := []*adapter.Observation{
-		{ID: "obs-u1", Content: "user one fact", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
-		{ID: "obs-u2", Content: "user two fact", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u2", AppName: "a1", CreatedAt: time.Now()},
+		{ID: idx.NewID(), Content: "user one fact", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: time.Now()},
+		{ID: idx.NewID(), Content: "user two fact", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u2", AppName: "a1", CreatedAt: time.Now()},
 	}
 
 	for _, obs := range observations {
@@ -844,8 +866,8 @@ func TestSQLiteStorage_Search_FilterByAppName(t *testing.T) {
 	defer storage.Close()
 
 	observations := []*adapter.Observation{
-		{ID: "obs-a1", Content: "app one fact", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "app1", CreatedAt: time.Now()},
-		{ID: "obs-a2", Content: "app two fact", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "app2", CreatedAt: time.Now()},
+		{ID: idx.NewID(), Content: "app one fact", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "app1", CreatedAt: time.Now()},
+		{ID: idx.NewID(), Content: "app two fact", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "app2", CreatedAt: time.Now()},
 	}
 
 	for _, obs := range observations {
@@ -879,8 +901,9 @@ func TestSQLiteStorage_Purge_SyncsVirtualTables(t *testing.T) {
 	}
 	defer storage.Close()
 
+	idPurge := idx.NewID()
 	obs := &adapter.Observation{
-		ID:        "obs-purge-fts",
+		ID:        idPurge,
 		Content:   "unique content for purge test",
 		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
@@ -915,7 +938,7 @@ func TestSQLiteStorage_Purge_SyncsVirtualTables(t *testing.T) {
 		Mode:       adapter.SearchModeFTS,
 	})
 	for _, r := range ftsResults {
-		if r.Observation.ID == "obs-purge-fts" {
+		if r.Observation.ID == idPurge {
 			t.Error("Observation still found in FTS after purge")
 		}
 	}
@@ -929,8 +952,9 @@ func TestSQLiteStorage_Forget_SyncsVecTable(t *testing.T) {
 	}
 	defer storage.Close()
 
+	idDelVec := idx.NewID()
 	obs := &adapter.Observation{
-		ID:        "obs-del-vec",
+		ID:        idDelVec,
 		Content:   "to be deleted from vec",
 		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
@@ -960,12 +984,12 @@ func TestSQLiteStorage_Forget_SyncsVecTable(t *testing.T) {
 	}
 
 	// Delete it
-	if err := storage.Forget(ctx, "obs-del-vec"); err != nil {
+	if err := storage.Forget(ctx, idDelVec); err != nil {
 		t.Fatalf("Forget() error = %v", err)
 	}
 
 	// Verify it's gone from main table
-	_, err = storage.GetByID(ctx, "obs-del-vec")
+	_, err = storage.GetByID(ctx, idDelVec)
 	if err == nil {
 		t.Error("Expected observation to be deleted from main table")
 	}
@@ -983,7 +1007,7 @@ func TestSQLiteStorage_Forget_SyncsVecTable(t *testing.T) {
 		t.Fatalf("Vector search after delete error = %v", err)
 	}
 	for _, r := range vecResults {
-		if r.Observation.ID == "obs-del-vec" {
+		if r.Observation.ID == idDelVec {
 			t.Error("Observation still found in vector search after deletion")
 		}
 	}
@@ -997,8 +1021,9 @@ func TestSQLiteStorage_Purge_UnknownFilterKey(t *testing.T) {
 	}
 	defer storage.Close()
 
+	idUnknown := idx.NewID()
 	obs := &adapter.Observation{
-		ID:        "obs-unknown-filter",
+		ID:        idUnknown,
 		Content:   "test content",
 		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
@@ -1017,12 +1042,12 @@ func TestSQLiteStorage_Purge_UnknownFilterKey(t *testing.T) {
 	}
 
 	// adapter.Observation should still exist
-	result, err := storage.GetByID(ctx, "obs-unknown-filter")
+	result, err := storage.GetByID(ctx, idUnknown)
 	if err != nil {
 		t.Fatalf("GetByID() error = %v, observation should still exist", err)
 	}
-	if result.ID != "obs-unknown-filter" {
-		t.Errorf("ID = %q, want 'obs-unknown-filter'", result.ID)
+	if result.ID != idUnknown {
+		t.Errorf("ID = %q, want %q", result.ID.String(), idUnknown.String())
 	}
 }
 
@@ -1034,8 +1059,9 @@ func TestSQLiteStorage_Purge_MixedFilterKeys(t *testing.T) {
 	}
 	defer storage.Close()
 
+	idMixed := idx.NewID()
 	obs := &adapter.Observation{
-		ID:        "obs-mixed-filter",
+		ID:        idMixed,
 		Content:   "test content",
 		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
@@ -1054,12 +1080,12 @@ func TestSQLiteStorage_Purge_MixedFilterKeys(t *testing.T) {
 	}
 
 	// adapter.Observation should still exist
-	result, err := storage.GetByID(ctx, "obs-mixed-filter")
+	result, err := storage.GetByID(ctx, idMixed)
 	if err != nil {
 		t.Fatalf("GetByID() error = %v, observation should still exist", err)
 	}
-	if result.ID != "obs-mixed-filter" {
-		t.Errorf("ID = %q, want 'obs-mixed-filter'", result.ID)
+	if result.ID != idMixed {
+		t.Errorf("ID = %q, want %q", result.ID.String(), idMixed.String())
 	}
 }
 
@@ -1071,8 +1097,9 @@ func TestSQLiteStorage_Purge_EmptyFilter(t *testing.T) {
 	}
 	defer storage.Close()
 
+	idEmpty := idx.NewID()
 	obs := &adapter.Observation{
-		ID:        "obs-empty-filter",
+		ID:        idEmpty,
 		Content:   "test content",
 		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
@@ -1090,12 +1117,12 @@ func TestSQLiteStorage_Purge_EmptyFilter(t *testing.T) {
 	}
 
 	// adapter.Observation should still exist
-	result, err := storage.GetByID(ctx, "obs-empty-filter")
+	result, err := storage.GetByID(ctx, idEmpty)
 	if err != nil {
 		t.Fatalf("GetByID() error = %v, observation should still exist", err)
 	}
-	if result.ID != "obs-empty-filter" {
-		t.Errorf("ID = %q, want 'obs-empty-filter'", result.ID)
+	if result.ID != idEmpty {
+		t.Errorf("ID = %q, want %q", result.ID.String(), idEmpty.String())
 	}
 }
 
@@ -1107,8 +1134,9 @@ func TestSQLiteStorage_Purge_NoMatchingRows(t *testing.T) {
 	}
 	defer storage.Close()
 
+	idNoMatch := idx.NewID()
 	obs := &adapter.Observation{
-		ID:        "obs-no-match",
+		ID:        idNoMatch,
 		Content:   "test content",
 		Level:     adapter.LevelExplicit,
 		SessionID: "s1",
@@ -1126,11 +1154,11 @@ func TestSQLiteStorage_Purge_NoMatchingRows(t *testing.T) {
 	}
 
 	// Original observation should still exist (different session_id)
-	result, err := storage.GetByID(ctx, "obs-no-match")
+	result, err := storage.GetByID(ctx, idNoMatch)
 	if err != nil {
 		t.Fatalf("GetByID() error = %v, observation should still exist", err)
 	}
-	if result.ID != "obs-no-match" {
-		t.Errorf("ID = %q, want 'obs-no-match'", result.ID)
+	if result.ID != idNoMatch {
+		t.Errorf("ID = %q, want %q", result.ID.String(), idNoMatch.String())
 	}
 }

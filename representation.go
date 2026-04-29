@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ieshan/adk-go-memory/adapter"
+	"github.com/ieshan/idx"
 )
 
 // RepresentationConfig configures the RepresentationManager.
@@ -99,7 +100,7 @@ func (rm *RepresentationManager) GetWorkingRepresentation(ctx context.Context, q
 }
 
 // containsObservation checks if an observation with the given ID is already in the list.
-func containsObservation(obs []adapter.Observation, id string) bool {
+func containsObservation(obs []adapter.Observation, id idx.ID) bool {
 	for _, o := range obs {
 		if o.ID == id {
 			return true

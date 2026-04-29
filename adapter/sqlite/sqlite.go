@@ -11,6 +11,7 @@ import (
 
 	sqlitevec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	"github.com/ieshan/adk-go-memory/adapter"
+	"github.com/ieshan/idx"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -64,7 +65,7 @@ func (s *SQLiteStorage) migrate() error {
 	schema := `
 CREATE TABLE IF NOT EXISTS observations (
     rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-    id TEXT UNIQUE NOT NULL,
+    id BLOB UNIQUE NOT NULL,
     content TEXT NOT NULL,
     level TEXT NOT NULL,
     session_id TEXT NOT NULL,
@@ -175,7 +176,7 @@ func (s *SQLiteStorage) Store(ctx context.Context, obs *adapter.Observation) err
 }
 
 // GetByID retrieves an observation by its ID.
-func (s *SQLiteStorage) GetByID(ctx context.Context, id string) (*adapter.Observation, error) {
+func (s *SQLiteStorage) GetByID(ctx context.Context, id idx.ID) (*adapter.Observation, error) {
 	var obs adapter.Observation
 	var tagsJSON string
 	var embeddingBlob []byte
@@ -188,7 +189,7 @@ func (s *SQLiteStorage) GetByID(ctx context.Context, id string) (*adapter.Observ
 		&obs.CreatedAt, &embeddingBlob)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("observation not found: %s", id)
+			return nil, fmt.Errorf("observation not found: %s", id.String())
 		}
 		return nil, err
 	}
@@ -413,18 +414,18 @@ func (s *SQLiteStorage) searchHybrid(ctx context.Context, opts *adapter.SearchOp
 	const k = 60
 
 	// Build rank maps
-	vectorRanks := make(map[string]int)
+	vectorRanks := make(map[idx.ID]int)
 	for i, r := range vectorResults {
 		vectorRanks[r.Observation.ID] = i + 1
 	}
 
-	ftsRanks := make(map[string]int)
+	ftsRanks := make(map[idx.ID]int)
 	for i, r := range ftsResults {
 		ftsRanks[r.Observation.ID] = i + 1
 	}
 
 	// Collect all unique IDs
-	allIDs := make(map[string]bool)
+	allIDs := make(map[idx.ID]bool)
 	for id := range vectorRanks {
 		allIDs[id] = true
 	}
@@ -602,7 +603,7 @@ func (s *SQLiteStorage) buildWhereClause(opts *adapter.SearchOptions) (string, [
 // Forget deletes an observation by ID.
 // All deletes (main table, FTS5, vec0) are wrapped in a transaction
 // so that a partial failure does not leave the database in an inconsistent state.
-func (s *SQLiteStorage) Forget(ctx context.Context, id string) error {
+func (s *SQLiteStorage) Forget(ctx context.Context, id idx.ID) error {
 	// Get rowid first for virtual table cleanup
 	var rowid int64
 	err := s.db.QueryRowContext(ctx, `SELECT rowid FROM observations WHERE id = ?`, id).Scan(&rowid)
@@ -734,7 +735,7 @@ func (s *SQLiteStorage) Purge(ctx context.Context, filter map[string]string) err
 
 // IncrementTimesDerived increments the times_derived counter for an observation.
 // Returns an error if the observation does not exist.
-func (s *SQLiteStorage) IncrementTimesDerived(ctx context.Context, id string) error {
+func (s *SQLiteStorage) IncrementTimesDerived(ctx context.Context, id idx.ID) error {
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE observations SET times_derived = times_derived + 1 WHERE id = ?`, id)
 	if err != nil {
@@ -745,7 +746,7 @@ func (s *SQLiteStorage) IncrementTimesDerived(ctx context.Context, id string) er
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("sqlite: increment times_derived: observation not found: %s", id)
+		return fmt.Errorf("sqlite: increment times_derived: observation not found: %s", id.String())
 	}
 	return nil
 }

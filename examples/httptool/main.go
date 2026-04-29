@@ -141,7 +141,7 @@ func (w *WeatherTool) ProcessRequest(ctx tool.Context, req *adkmodel.LLMRequest)
 func main() {
 	ctx := context.Background()
 
-	// Setup storage and memory service
+	// Setup storage and memory kit
 	storage, err := sqlite.InMemory()
 	if err != nil {
 		log.Fatalf("Failed to create SQLite storage: %v", err)
@@ -149,16 +149,15 @@ func main() {
 
 	modelLLM := getLLM()
 
-	deriver := memory.NewDeriver(memory.DeriverConfig{
+	// Create memory kit with all components
+	kit, err := memory.New(memory.KitConfig{
+		Storage: storage,
 		LLM:     modelLLM,
-		Storage: storage,
 	})
-
-	svc := memory.NewService(memory.ServiceConfig{
-		Storage: storage,
-		Deriver: deriver,
-	})
-	defer svc.Close()
+	if err != nil {
+		log.Fatalf("Failed to create memory kit: %v", err)
+	}
+	defer kit.Close()
 
 	// Create weather tool with default HTTP client
 	// In production, this would call a real weather API
@@ -186,7 +185,7 @@ The tool takes a city name as input and returns temperature and conditions.`,
 		AppName:           appName,
 		Agent:             agent,
 		SessionService:    sessionService,
-		MemoryService:     svc,
+		MemoryService:     kit.Service,
 		AutoCreateSession: true,
 	})
 	if err != nil {

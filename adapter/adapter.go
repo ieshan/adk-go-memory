@@ -5,6 +5,8 @@ import (
 	"context"
 	"math"
 	"time"
+
+	"github.com/ieshan/idx"
 )
 
 // ObservationLevel indicates the confidence level of an observation.
@@ -40,7 +42,7 @@ func LevelBaseScore(level ObservationLevel) float64 {
 
 // Observation represents a single extracted fact.
 type Observation struct {
-	ID           string
+	ID           idx.ID
 	Content      string
 	Level        ObservationLevel
 	SessionID    string
@@ -99,19 +101,19 @@ type Storage interface {
 	Store(ctx context.Context, obs *Observation) error
 
 	// GetByID retrieves an observation by its ID.
-	GetByID(ctx context.Context, id string) (*Observation, error)
+	GetByID(ctx context.Context, id idx.ID) (*Observation, error)
 
 	// Search finds observations matching the given options.
 	Search(ctx context.Context, opts *SearchOptions) ([]SearchResult, error)
 
 	// Forget deletes an observation by ID.
-	Forget(ctx context.Context, id string) error
+	Forget(ctx context.Context, id idx.ID) error
 
 	// Purge deletes observations matching the filter.
 	Purge(ctx context.Context, filter map[string]string) error
 
 	// IncrementTimesDerived increments the times_derived counter for an observation.
-	IncrementTimesDerived(ctx context.Context, id string) error
+	IncrementTimesDerived(ctx context.Context, id idx.ID) error
 
 	// Close releases any resources held by the storage.
 	Close() error

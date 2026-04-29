@@ -2,13 +2,12 @@ package memory
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
+	"github.com/ieshan/idx"
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 )
@@ -17,6 +16,8 @@ import (
 type TimestampedMessage struct {
 	Content *genai.Content
 	At      time.Time
+	// Author is the entity that created this message (e.g., "user", "model").
+	Author string
 }
 
 // DeriverConfig configures the Deriver.
@@ -90,11 +91,15 @@ func NewDeriver(cfg DeriverConfig) *Deriver {
 // Derive extracts observations from timestamped messages and stores them.
 // userID and appName are stored on each observation for filtering.
 func (d *Deriver) Derive(ctx context.Context, messages []TimestampedMessage, sessionID, userID, appName string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("deriver: context cancelled: %w", err)
+	}
+
 	if len(messages) == 0 {
 		return nil
 	}
 	if d.llm == nil {
-		return fmt.Errorf("deriver: LLM is required for observation extraction")
+		return fmt.Errorf("deriver: LLM is required")
 	}
 
 	// Build LLM request with system prompt
@@ -147,17 +152,14 @@ func (d *Deriver) Derive(ctx context.Context, messages []TimestampedMessage, ses
 			level = string(adapter.LevelInductive)
 		}
 
-		id, err := randomID("obs")
-		if err != nil {
-			return fmt.Errorf("deriver: generate ID: %w", err)
-		}
+		id := idx.NewID()
 
 		// Deduplication check
 		dupeID, err := d.findNearDuplicate(ctx, obs.Content, sessionID)
 		if err != nil {
 			return fmt.Errorf("deriver: dedup search: %w", err)
 		}
-		if dupeID != "" {
+		if !dupeID.IsZero() {
 			if err := d.storage.IncrementTimesDerived(ctx, dupeID); err != nil {
 				return fmt.Errorf("deriver: increment times_derived: %w", err)
 			}
@@ -185,11 +187,11 @@ func (d *Deriver) Derive(ctx context.Context, messages []TimestampedMessage, ses
 
 // findNearDuplicate searches for an existing observation whose content is
 // semantically close to content. Returns the ID of the near-duplicate if
-// found above the configured threshold, or "" if none found.
+// found above the configured threshold, or idx.NilID if none found.
 // Uses hybrid search and applies score thresholds for robust deduplication.
 // When an EmbeddingFunc is configured, the embedding is provided to enable
 // vector-based deduplication alongside FTS.
-func (d *Deriver) findNearDuplicate(ctx context.Context, content, sessionID string) (string, error) {
+func (d *Deriver) findNearDuplicate(ctx context.Context, content, sessionID string) (idx.ID, error) {
 	opts := &adapter.SearchOptions{
 		Query:      content,
 		MaxResults: 3,
@@ -207,10 +209,10 @@ func (d *Deriver) findNearDuplicate(ctx context.Context, content, sessionID stri
 
 	results, err := d.storage.Search(ctx, opts)
 	if err != nil {
-		return "", err
+		return idx.NilID, err
 	}
 	if len(results) == 0 {
-		return "", nil
+		return idx.NilID, nil
 	}
 
 	// Apply threshold-based deduplication
@@ -236,7 +238,7 @@ func (d *Deriver) findNearDuplicate(ctx context.Context, content, sessionID stri
 		}
 	}
 
-	return "", nil
+	return idx.NilID, nil
 }
 
 // validLevel checks if the given level is a recognized ObservationLevel.
@@ -249,7 +251,7 @@ func validLevel(level string) bool {
 	}
 }
 
-// formatTimestampedMessage formats a message as "[timestamp] role: text"
+// formatTimestampedMessage formats a message as "[timestamp] author/role: text"
 func formatTimestampedMessage(tm TimestampedMessage) string {
 	ts := tm.At.UTC().Format(time.RFC3339)
 	var text string
@@ -258,18 +260,13 @@ func formatTimestampedMessage(tm TimestampedMessage) string {
 			text += p.Text
 		}
 	}
-	role := tm.Content.Role
-	if role == "" {
-		role = "user"
+	// Use author if available, otherwise fall back to role
+	author := tm.Author
+	if author == "" {
+		author = tm.Content.Role
 	}
-	return "[" + ts + "] " + role + ": " + text
-}
-
-// randomID generates a cryptographically random ID with the given prefix.
-func randomID(prefix string) (string, error) {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", err
+	if author == "" {
+		author = "user"
 	}
-	return prefix + "-" + hex.EncodeToString(b[:]), nil
+	return "[" + ts + "] " + author + ": " + text
 }

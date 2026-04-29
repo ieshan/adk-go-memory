@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
+	"github.com/ieshan/idx"
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 )
@@ -26,6 +27,11 @@ type SummarizerConfig struct {
 	Storage       adapter.Storage
 	ShortInterval int // Messages per short summary (default: 20)
 	LongInterval  int // Messages per long summary (default: 60)
+
+	// Threshold-based triggers (Phase 3 enhancement)
+	MaxEvents  int // Trigger when events exceed this (0 = disabled)
+	MaxTokens  int // Trigger when estimated tokens exceed this (0 = disabled)
+	KeepRecent int // Always preserve this many recent events (default: 10)
 }
 
 // Summarizer creates session summaries at defined intervals.
@@ -52,6 +58,9 @@ Focus on:
 
 Keep the summary brief but comprehensive.`
 
+// ApproximateTokensPerChar is the rough token-to-character ratio (4 chars ≈ 1 token).
+const ApproximateTokensPerChar = 0.25
+
 // NewSummarizer creates a new summarizer.
 func NewSummarizer(cfg SummarizerConfig) *Summarizer {
 	if cfg.ShortInterval == 0 {
@@ -59,6 +68,9 @@ func NewSummarizer(cfg SummarizerConfig) *Summarizer {
 	}
 	if cfg.LongInterval == 0 {
 		cfg.LongInterval = 60
+	}
+	if cfg.KeepRecent < 0 {
+		cfg.KeepRecent = 0
 	}
 	return &Summarizer{
 		llm:     cfg.LLM,
@@ -76,6 +88,54 @@ func (s *Summarizer) ShouldSummarize(messageCount int) (SummaryType, bool) {
 		return SummaryTypeShort, true
 	}
 	return "", false
+}
+
+// ShouldSummarizeEnhanced checks both interval and threshold triggers.
+// Returns the summary type and true if a summary should be created.
+// This is the Phase 3 enhanced version supporting threshold-based triggers.
+func (s *Summarizer) ShouldSummarizeEnhanced(messageCount, estimatedTokens int) (SummaryType, string, bool) {
+	// Check threshold triggers first (they take precedence)
+	if s.config.MaxEvents > 0 && messageCount > s.config.MaxEvents {
+		return SummaryTypeLong, fmt.Sprintf("event count %d exceeds MaxEvents %d", messageCount, s.config.MaxEvents), true
+	}
+
+	if s.config.MaxTokens > 0 && estimatedTokens > s.config.MaxTokens {
+		return SummaryTypeLong, fmt.Sprintf("estimated tokens %d exceeds MaxTokens %d", estimatedTokens, s.config.MaxTokens), true
+	}
+
+	// Fall back to interval-based triggers
+	if messageCount > 0 && messageCount%s.config.LongInterval == 0 {
+		return SummaryTypeLong, fmt.Sprintf("reached long interval at %d messages", messageCount), true
+	}
+	if messageCount > 0 && messageCount%s.config.ShortInterval == 0 {
+		return SummaryTypeShort, fmt.Sprintf("reached short interval at %d messages", messageCount), true
+	}
+
+	return "", "", false
+}
+
+// EstimateTokens approximates the token count for a slice of timestamped messages.
+// Uses a rough heuristic: 4 characters ≈ 1 token.
+func EstimateTokens(messages []TimestampedMessage) int {
+	var charCount int
+	for _, msg := range messages {
+		if msg.Content == nil {
+			continue
+		}
+		for _, part := range msg.Content.Parts {
+			charCount += len(part.Text)
+		}
+	}
+	return int(float64(charCount) * ApproximateTokensPerChar)
+}
+
+// GetMessagesForSummarization returns messages to summarize, respecting KeepRecent.
+// It returns messages excluding the most recent KeepRecent messages.
+func (s *Summarizer) GetMessagesForSummarization(messages []TimestampedMessage) []TimestampedMessage {
+	if s.config.KeepRecent <= 0 || len(messages) <= s.config.KeepRecent {
+		return messages
+	}
+	return messages[:len(messages)-s.config.KeepRecent]
 }
 
 // Summarize creates a summary of the given messages.
@@ -130,10 +190,7 @@ func (s *Summarizer) Summarize(ctx context.Context, messages []TimestampedMessag
 
 // StoreSummary persists a summary to the storage (as a special observation).
 func (s *Summarizer) StoreSummary(ctx context.Context, sessionID string, summary *Summary) error {
-	id, err := randomID("summary")
-	if err != nil {
-		return err
-	}
+	id := idx.NewID()
 
 	content, _ := json.Marshal(map[string]interface{}{
 		"summary_marker": true,
