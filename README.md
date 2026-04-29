@@ -462,6 +462,47 @@ func InMemory() *MemoryStorage
 // NewSQLiteStorage creates a file-based SQLite storage (for production).
 // Located in github.com/ieshan/adk-go-memory/adapter/sqlite submodule.
 func NewSQLiteStorage(path string) (*SQLiteStorage, error)
+
+// NewSQLiteStorageWithDB creates a SQLite storage from an existing *sql.DB connection.
+// The caller retains ownership of the database connection and must close it separately.
+// Located in github.com/ieshan/adk-go-memory/adapter/sqlite submodule.
+func NewSQLiteStorageWithDB(db *sql.DB) (*SQLiteStorage, error)
+```
+
+#### Using an Existing Database Connection
+
+When integrating with an existing database setup or connection pool:
+
+```go
+package main
+
+import (
+    "database/sql"
+    "log"
+
+    "github.com/ieshan/adk-go-memory/adapter/sqlite"
+    _ "github.com/mattn/go-sqlite3"
+)
+
+func main() {
+    // You might have an existing database connection
+    db, err := sql.Open("sqlite3", "/path/to/existing.db")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer db.Close()
+
+    // Create storage using the existing connection
+    // Caller retains ownership of db
+    storage, err := sqlite.NewSQLiteStorageWithDB(db)
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer storage.Close() // This won't close db
+
+    // Use storage normally...
+    // db remains usable after storage.Close()
+}
 ```
 
 ## Agent Integration Examples

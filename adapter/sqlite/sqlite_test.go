@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -1086,6 +1087,191 @@ func TestSQLiteStorage_Purge_MixedFilterKeys(t *testing.T) {
 	}
 	if result.ID != idMixed {
 		t.Errorf("ID = %q, want %q", result.ID.String(), idMixed.String())
+	}
+}
+
+func TestNewSQLiteStorageWithDB(t *testing.T) {
+	ctx := context.Background()
+
+	// Create a raw database connection
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	// Create storage from existing connection
+	storage, err := NewSQLiteStorageWithDB(db)
+	if err != nil {
+		t.Fatalf("NewSQLiteStorageWithDB() error = %v", err)
+	}
+
+	// Verify storage works
+	id := idx.NewID()
+	obs := &adapter.Observation{
+		ID:        id,
+		Content:   "test from existing db",
+		Level:     adapter.LevelExplicit,
+		SessionID: "s1",
+		UserID:    "u1",
+		AppName:   "a1",
+		CreatedAt: time.Now(),
+	}
+
+	if err := storage.Store(ctx, obs); err != nil {
+		t.Fatalf("Store() error = %v", err)
+	}
+
+	result, err := storage.GetByID(ctx, id)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+
+	if result.Content != obs.Content {
+		t.Errorf("Content = %q, want %q", result.Content, obs.Content)
+	}
+
+	// Close storage - should NOT close the underlying db
+	if err := storage.Close(); err != nil {
+		t.Fatalf("storage.Close() error = %v", err)
+	}
+
+	// Verify db is still usable (not closed)
+	if err := db.Ping(); err != nil {
+		t.Errorf("db.Ping() failed after storage.Close(): %v", err)
+	}
+}
+
+func TestNewSQLiteStorageWithDB_Migrations(t *testing.T) {
+	ctx := context.Background()
+
+	// Create a raw database connection
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	// Create storage - should apply migrations
+	storage, err := NewSQLiteStorageWithDB(db)
+	if err != nil {
+		t.Fatalf("NewSQLiteStorageWithDB() error = %v", err)
+	}
+
+	// Verify schema was created by checking a table exists
+	var count int
+	err = db.QueryRowContext(ctx,
+		"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='observations'").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to check for observations table: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("observations table not found, count = %d", count)
+	}
+
+	// Verify FTS table exists
+	err = db.QueryRowContext(ctx,
+		"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='observations_fts'").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to check for observations_fts table: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("observations_fts table not found, count = %d", count)
+	}
+
+	// Verify vec table exists
+	err = db.QueryRowContext(ctx,
+		"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='vec_observations'").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to check for vec_observations table: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("vec_observations table not found, count = %d", count)
+	}
+
+	storage.Close()
+}
+
+func TestNewSQLiteStorageWithDB_NilDB(t *testing.T) {
+	// Test with nil database
+	_, err := NewSQLiteStorageWithDB(nil)
+	if err == nil {
+		t.Error("Expected error for nil database")
+	}
+}
+
+func TestNewSQLiteStorageWithDB_ReuseConnection(t *testing.T) {
+	ctx := context.Background()
+
+	// Create a shared database connection
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	// Create first storage instance
+	storage1, err := NewSQLiteStorageWithDB(db)
+	if err != nil {
+		t.Fatalf("NewSQLiteStorageWithDB() #1 error = %v", err)
+	}
+
+	// Store something
+	id1 := idx.NewID()
+	obs1 := &adapter.Observation{
+		ID:        id1,
+		Content:   "first storage",
+		Level:     adapter.LevelExplicit,
+		SessionID: "s1",
+		UserID:    "u1",
+		AppName:   "a1",
+		CreatedAt: time.Now(),
+	}
+	if err := storage1.Store(ctx, obs1); err != nil {
+		t.Fatalf("storage1.Store() error = %v", err)
+	}
+	storage1.Close()
+
+	// Create second storage instance with same connection
+	storage2, err := NewSQLiteStorageWithDB(db)
+	if err != nil {
+		t.Fatalf("NewSQLiteStorageWithDB() #2 error = %v", err)
+	}
+
+	// Verify we can read what storage1 wrote
+	result, err := storage2.GetByID(ctx, id1)
+	if err != nil {
+		t.Fatalf("storage2.GetByID() error = %v", err)
+	}
+	if result.Content != "first storage" {
+		t.Errorf("Content = %q, want %q", result.Content, "first storage")
+	}
+
+	// Store something new
+	id2 := idx.NewID()
+	obs2 := &adapter.Observation{
+		ID:        id2,
+		Content:   "second storage",
+		Level:     adapter.LevelExplicit,
+		SessionID: "s1",
+		UserID:    "u1",
+		AppName:   "a1",
+		CreatedAt: time.Now(),
+	}
+	if err := storage2.Store(ctx, obs2); err != nil {
+		t.Fatalf("storage2.Store() error = %v", err)
+	}
+	storage2.Close()
+
+	// Verify data is still accessible through raw db
+	var content string
+	err = db.QueryRowContext(ctx,
+		"SELECT content FROM observations WHERE id = ?", id2).Scan(&content)
+	if err != nil {
+		t.Fatalf("Query through raw db failed: %v", err)
+	}
+	if content != "second storage" {
+		t.Errorf("Content from raw db = %q, want %q", content, "second storage")
 	}
 }
 

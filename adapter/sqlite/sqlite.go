@@ -25,7 +25,8 @@ var _ adapter.Storage = (*SQLiteStorage)(nil)
 
 // SQLiteStorage implements Storage using SQLite with sqlite-vec and FTS5.
 type SQLiteStorage struct {
-	db *sql.DB
+	db    *sql.DB
+	ownDB bool // true if we opened the connection and should close it
 }
 
 // InMemory creates a new in-memory SQLite storage instance.
@@ -35,7 +36,7 @@ func InMemory() (*SQLiteStorage, error) {
 		return nil, fmt.Errorf("sqlite: open memory db: %w", err)
 	}
 
-	storage := &SQLiteStorage{db: db}
+	storage := &SQLiteStorage{db: db, ownDB: true}
 	if err := storage.migrate(); err != nil {
 		db.Close()
 		return nil, err
@@ -51,12 +52,27 @@ func NewSQLiteStorage(path string) (*SQLiteStorage, error) {
 		return nil, fmt.Errorf("sqlite: open db: %w", err)
 	}
 
-	storage := &SQLiteStorage{db: db}
+	storage := &SQLiteStorage{db: db, ownDB: true}
 	if err := storage.migrate(); err != nil {
 		db.Close()
 		return nil, err
 	}
 
+	return storage, nil
+}
+
+// NewSQLiteStorageWithDB creates a new SQLiteStorage from an existing database connection.
+// The caller retains ownership of the provided *sql.DB and is responsible for closing it.
+// This is useful when integrating with existing connection pools or when the database
+// connection needs to be shared across multiple components.
+func NewSQLiteStorageWithDB(db *sql.DB) (*SQLiteStorage, error) {
+	if db == nil {
+		return nil, fmt.Errorf("sqlite: NewSQLiteStorageWithDB: db is nil")
+	}
+	storage := &SQLiteStorage{db: db, ownDB: false}
+	if err := storage.migrate(); err != nil {
+		return nil, err
+	}
 	return storage, nil
 }
 
@@ -752,8 +768,13 @@ func (s *SQLiteStorage) IncrementTimesDerived(ctx context.Context, id idx.ID) er
 }
 
 // Close releases the database connection.
+// Note: When using NewSQLiteStorageWithDB, the caller retains ownership
+// of the *sql.DB connection and Close() does not close it.
 func (s *SQLiteStorage) Close() error {
-	return s.db.Close()
+	if s.ownDB {
+		return s.db.Close()
+	}
+	return nil
 }
 
 // QueryMostDerived returns observations sorted by times_derived DESC.
