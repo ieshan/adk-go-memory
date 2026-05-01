@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
-	"github.com/ieshan/adk-go-memory/testutil"
+	"github.com/ieshan/adk-go-pkg/testutil"
 	"github.com/ieshan/idx"
 )
 
@@ -23,13 +23,13 @@ func TestProvider_GetMemoryContext(t *testing.T) {
 		ID: id1, Content: "user prefers dark mode", Level: adapter.LevelExplicit,
 		SessionID: "s1", UserID: "u1", AppName: "a1",
 		TimesDerived: 1, CreatedAt: time.Now(),
-		Embedding: testutil.FakeEmbedding("dark mode preference"),
+		Embedding: testutil.FakeEmbed("dark mode preference"),
 	}
 	obs2 := &adapter.Observation{
 		ID: id2, Content: "user works with Python", Level: adapter.LevelExplicit,
 		SessionID: "s1", UserID: "u1", AppName: "a1",
 		TimesDerived: 1, CreatedAt: time.Now(),
-		Embedding: testutil.FakeEmbedding("python programming"),
+		Embedding: testutil.FakeEmbed("python programming"),
 	}
 	if err := storage.Store(ctx, obs1); err != nil {
 		t.Fatalf("Store() error = %v", err)
@@ -40,7 +40,7 @@ func TestProvider_GetMemoryContext(t *testing.T) {
 
 	provider := NewProvider(ProviderConfig{
 		Storage:       storage,
-		EmbeddingFunc: func(ctx context.Context, text string) ([]float32, error) { return testutil.FakeEmbedding(text), nil },
+		EmbeddingFunc: func(ctx context.Context, text string) ([]float32, error) { return testutil.FakeEmbed(text), nil },
 	})
 
 	result, err := provider.GetMemoryContext(ctx, "dark mode", "s1", "u1", "a1")
@@ -271,7 +271,7 @@ func TestProvider_GetMemoryContext_FallbackToSearch(t *testing.T) {
 	// representation manager returns empty, should fall back to search
 	provider := NewProvider(ProviderConfig{
 		Storage:       storage,
-		EmbeddingFunc: func(ctx context.Context, text string) ([]float32, error) { return testutil.FakeEmbedding(text), nil },
+		EmbeddingFunc: func(ctx context.Context, text string) ([]float32, error) { return testutil.FakeEmbed(text), nil },
 	})
 
 	result, err := provider.GetMemoryContext(ctx, "Rust", "s1", "u1", "a1")

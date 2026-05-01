@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
-	"github.com/ieshan/adk-go-memory/testutil"
+	"github.com/ieshan/adk-go-pkg/testutil"
 	"github.com/ieshan/idx"
 )
 
@@ -124,7 +124,7 @@ func TestRepresentationManager_NoDuplicates(t *testing.T) {
 		UserID:       "u1",
 		AppName:      "a1",
 		TimesDerived: 100,
-		Embedding:    testutil.FakeEmbedding("the only observation"),
+		Embedding:    testutil.FakeEmbed("the only observation"),
 		CreatedAt:    now,
 	}
 	if err := storage.Store(ctx, obs); err != nil {
@@ -132,7 +132,7 @@ func TestRepresentationManager_NoDuplicates(t *testing.T) {
 	}
 
 	embedFn := func(ctx context.Context, text string) ([]float32, error) {
-		return testutil.FakeEmbedding("test"), nil
+		return testutil.FakeEmbed("test"), nil
 	}
 
 	rm := NewRepresentationManager(RepresentationConfig{
@@ -170,7 +170,7 @@ func TestRepresentationManager_EmptyStorage(t *testing.T) {
 	storage := adapter.InMemory()
 
 	embedFn := func(ctx context.Context, text string) ([]float32, error) {
-		return testutil.FakeEmbedding("test"), nil
+		return testutil.FakeEmbed("test"), nil
 	}
 
 	rm := NewRepresentationManager(RepresentationConfig{

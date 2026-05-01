@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
-	"github.com/ieshan/adk-go-memory/testutil"
 	pkgtestutil "github.com/ieshan/adk-go-pkg/testutil"
 	"github.com/ieshan/idx"
 	"google.golang.org/adk/model"
@@ -455,7 +454,7 @@ func TestDeriver_DeduplicationWithEmbedding(t *testing.T) {
 		AppName:      "app1",
 		TimesDerived: 1,
 		CreatedAt:    time.Now(),
-		Embedding:    testutil.FakeEmbedding("user enjoys Go programming"),
+		Embedding:    pkgtestutil.FakeEmbed("user enjoys Go programming"),
 	}
 	if err := storage.Store(ctx, existing); err != nil {
 		t.Fatalf("Store() error = %v", err)
@@ -475,7 +474,7 @@ func TestDeriver_DeduplicationWithEmbedding(t *testing.T) {
 		LLM:     llm,
 		Storage: storage,
 		EmbeddingFunc: func(ctx context.Context, text string) ([]float32, error) {
-			return testutil.FakeEmbedding(text), nil
+			return pkgtestutil.FakeEmbed(text), nil
 		},
 	})
 	msgs := []TimestampedMessage{

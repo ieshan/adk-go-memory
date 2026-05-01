@@ -33,8 +33,6 @@ github.com/googleapis/gax-go/v2 v2.22.0 h1:PjIWBpgGIVKGoCXuiCoP64altEJCj3/Ei+kSU
 github.com/googleapis/gax-go/v2 v2.22.0/go.mod h1:irWBbALSr0Sk3qlqb9SyJ1h68WjgeFuiOzI4Rqw5+aY=
 github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
-github.com/ieshan/adk-go-pkg v1.0.6 h1:MlO64PPIUmf9Uzc1jW49sH2WZ2K6nwxvvZnJqY72ADU=
-github.com/ieshan/adk-go-pkg v1.0.6/go.mod h1:VtpVfhYkofJGiq+VZmcm/GOWhueNsfEQK2OzrRtbUNU=
 github.com/ieshan/idx v1.3.0 h1:LXxOGeijgeU0ONBtAsXj5NaQQeRvtk7rPUVv9bXRpXo=
 github.com/ieshan/idx v1.3.0/go.mod h1:mLwYfE7q2icj5O7XnBgX0xoV8LUMFddqoDDcVYXGIio=
 github.com/oklog/ulid/v2 v2.1.1 h1:suPZ4ARWLOJLegGFiZZ1dFAkqzhMjL3J1TzI+5wHz8s=

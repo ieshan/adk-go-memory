@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
+	"github.com/ieshan/adk-go-pkg/testutil"
 	"github.com/ieshan/idx"
 )
 
@@ -31,7 +32,7 @@ func TestSQLiteStorage_VectorSearch(t *testing.T) {
 			SessionID: "s1",
 			UserID:    "u1",
 			AppName:   "a1",
-			Embedding: fakeEmbedding("golang programming language"),
+			Embedding: testutil.FakeEmbed("golang programming language"),
 			CreatedAt: time.Now(),
 		},
 		{
@@ -41,7 +42,7 @@ func TestSQLiteStorage_VectorSearch(t *testing.T) {
 			SessionID: "s1",
 			UserID:    "u1",
 			AppName:   "a1",
-			Embedding: fakeEmbedding("italian food pizza cheese"),
+			Embedding: testutil.FakeEmbed("italian food pizza cheese"),
 			CreatedAt: time.Now(),
 		},
 		{
@@ -51,7 +52,7 @@ func TestSQLiteStorage_VectorSearch(t *testing.T) {
 			SessionID: "s1",
 			UserID:    "u1",
 			AppName:   "a1",
-			Embedding: fakeEmbedding("python programming code"),
+			Embedding: testutil.FakeEmbed("python programming code"),
 			CreatedAt: time.Now(),
 		},
 	}
@@ -63,7 +64,7 @@ func TestSQLiteStorage_VectorSearch(t *testing.T) {
 	}
 
 	// Search with embedding similar to Go/programming
-	queryEmbedding := fakeEmbedding("golang development")
+	queryEmbedding := testutil.FakeEmbed("golang development")
 	results, err := storage.Search(ctx, &adapter.SearchOptions{
 		Query:      "", // Text query not used in vector mode
 		Embedding:  queryEmbedding,
@@ -125,7 +126,7 @@ func TestSQLiteStorage_HybridSearch(t *testing.T) {
 			SessionID:    "s1",
 			UserID:       "u1",
 			AppName:      "a1",
-			Embedding:    fakeEmbedding("completely unrelated text about food"),
+			Embedding:    testutil.FakeEmbed("completely unrelated text about food"),
 			TimesDerived: 1,
 			CreatedAt:    time.Now().Add(-1 * time.Hour),
 		},
@@ -136,7 +137,7 @@ func TestSQLiteStorage_HybridSearch(t *testing.T) {
 			SessionID:    "s1",
 			UserID:       "u1",
 			AppName:      "a1",
-			Embedding:    fakeEmbedding("golang programming backend development"),
+			Embedding:    testutil.FakeEmbed("golang programming backend development"),
 			TimesDerived: 5, // Highly derived
 			CreatedAt:    time.Now(),
 		},
@@ -148,7 +149,7 @@ func TestSQLiteStorage_HybridSearch(t *testing.T) {
 		}
 	}
 
-	queryEmbedding := fakeEmbedding("golang programming")
+	queryEmbedding := testutil.FakeEmbed("golang programming")
 	results, err := storage.Search(ctx, &adapter.SearchOptions{
 		Query:      "Go programming",
 		Embedding:  queryEmbedding,
@@ -292,7 +293,7 @@ func TestSQLiteStorage_Forget_SyncsVirtualTables(t *testing.T) {
 		SessionID: "s1",
 		UserID:    "u1",
 		AppName:   "a1",
-		Embedding: fakeEmbedding("test content"),
+		Embedding: testutil.FakeEmbed("test content"),
 		CreatedAt: time.Now(),
 	}
 
@@ -394,7 +395,7 @@ func TestSQLiteStorage_StoreGetByID_RoundTrip(t *testing.T) {
 		Tags:         []string{"tag1", "tag2"},
 		TimesDerived: 5,
 		CreatedAt:    now,
-		Embedding:    fakeEmbedding("test embedding round trip"),
+		Embedding:    testutil.FakeEmbed("test embedding round trip"),
 	}
 
 	if err := storage.Store(ctx, obs); err != nil {
@@ -525,8 +526,8 @@ func TestSQLiteStorage_Search_DefaultModeIsHybrid(t *testing.T) {
 	defer storage.Close()
 
 	observations := []*adapter.Observation{
-		{ID: idx.NewID(), Content: "Go is a programming language", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", Embedding: fakeEmbedding("golang programming"), CreatedAt: time.Now()},
-		{ID: idx.NewID(), Content: "user enjoys hiking", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", Embedding: fakeEmbedding("outdoor hiking nature"), CreatedAt: time.Now()},
+		{ID: idx.NewID(), Content: "Go is a programming language", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", Embedding: testutil.FakeEmbed("golang programming"), CreatedAt: time.Now()},
+		{ID: idx.NewID(), Content: "user enjoys hiking", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", Embedding: testutil.FakeEmbed("outdoor hiking nature"), CreatedAt: time.Now()},
 	}
 	for _, obs := range observations {
 		if err := storage.Store(ctx, obs); err != nil {
@@ -910,7 +911,7 @@ func TestSQLiteStorage_Purge_SyncsVirtualTables(t *testing.T) {
 		SessionID: "s1",
 		UserID:    "u1",
 		AppName:   "a1",
-		Embedding: fakeEmbedding("unique content for purge test"),
+		Embedding: testutil.FakeEmbed("unique content for purge test"),
 		CreatedAt: time.Now(),
 	}
 	if err := storage.Store(ctx, obs); err != nil {
@@ -961,7 +962,7 @@ func TestSQLiteStorage_Forget_SyncsVecTable(t *testing.T) {
 		SessionID: "s1",
 		UserID:    "u1",
 		AppName:   "a1",
-		Embedding: fakeEmbedding("test content for vec delete"),
+		Embedding: testutil.FakeEmbed("test content for vec delete"),
 		CreatedAt: time.Now(),
 	}
 	if err := storage.Store(ctx, obs); err != nil {
@@ -970,7 +971,7 @@ func TestSQLiteStorage_Forget_SyncsVecTable(t *testing.T) {
 
 	// Verify it exists in vector search
 	vecResults, err := storage.Search(ctx, &adapter.SearchOptions{
-		Embedding:  fakeEmbedding("test content for vec delete"),
+		Embedding:  testutil.FakeEmbed("test content for vec delete"),
 		MaxResults: 1,
 		Mode:       adapter.SearchModeVector,
 		SessionID:  "s1",
@@ -997,7 +998,7 @@ func TestSQLiteStorage_Forget_SyncsVecTable(t *testing.T) {
 
 	// Verify vector search no longer returns it
 	vecResults, err = storage.Search(ctx, &adapter.SearchOptions{
-		Embedding:  fakeEmbedding("test content for vec delete"),
+		Embedding:  testutil.FakeEmbed("test content for vec delete"),
 		MaxResults: 10,
 		Mode:       adapter.SearchModeVector,
 		SessionID:  "s1",
