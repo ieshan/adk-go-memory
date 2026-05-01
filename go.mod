@@ -3,7 +3,7 @@ module github.com/ieshan/adk-go-memory
 go 1.26
 
 require (
-	github.com/ieshan/adk-go-pkg v1.0.7
+	github.com/ieshan/adk-go-pkg v1.0.8
 	github.com/ieshan/idx v1.3.0
 	google.golang.org/adk v1.2.0
 	google.golang.org/genai v1.55.0
@@ -42,5 +42,3 @@ require (
 	rsc.io/omap v1.2.0 // indirect
 	rsc.io/ordered v1.1.1 // indirect
 )
-
-
