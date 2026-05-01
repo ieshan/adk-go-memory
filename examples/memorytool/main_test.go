@@ -10,7 +10,7 @@ import (
 
 	memory "github.com/ieshan/adk-go-memory"
 	"github.com/ieshan/adk-go-memory/adapter"
-	"github.com/ieshan/adk-go-memory/internal/testutil"
+	"github.com/ieshan/adk-go-pkg/testutil"
 	"github.com/ieshan/idx"
 	adkagent "google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
@@ -41,37 +41,30 @@ func TestMemoryTool_ExplicitSearch(t *testing.T) {
 	}
 
 	// Fake LLM that calls search_memory tool then responds
-	llm := &testutil.FakeLLM{
-		Responses: []model.LLMResponse{
-			// First: Function call to search_memory
-			{
-				Content: &genai.Content{
-					Role: genai.RoleModel,
-					Parts: []*genai.Part{
-						{
-							FunctionCall: &genai.FunctionCall{
-								Name: "search_memory",
-								Args: map[string]any{"query": "weekend activities"},
-							},
+	llm := testutil.NewFakeLLM(
+		// First: Function call to search_memory
+		model.LLMResponse{
+			Content: &genai.Content{
+				Role: genai.RoleModel,
+				Parts: []*genai.Part{
+					{
+						FunctionCall: &genai.FunctionCall{
+							Name: "search_memory",
+							Args: map[string]any{"query": "weekend activities"},
 						},
 					},
 				},
 			},
-			// After tool result: Final response
-			{
-				Content: genai.NewContentFromText(
-					"I remember you enjoy hiking on weekends! Would you like trail recommendations?",
-					genai.RoleModel,
-				),
-			},
 		},
-	}
+		// After tool result: Final response
+		model.LLMResponse{
+			Content: genai.NewContentFromText("I see you enjoy hiking on weekends!", genai.RoleModel),
+		},
+	)
 
-	// Create memory tool
-	memTool, err := memory.NewMemoryTool(storage)
-	if err != nil {
-		t.Fatalf("NewMemoryTool error = %v", err)
-	}
+	// Create memory provider and tool
+	provider := memory.NewProvider(memory.ProviderConfig{Storage: storage})
+	memTool := memory.NewMemoryTool(provider)
 
 	// Create agent with tool
 	agent, err := llmagent.New(llmagent.Config{
@@ -140,31 +133,27 @@ func TestMemoryTool_NoResults(t *testing.T) {
 	storage := adapter.InMemory()
 
 	// Fake LLM calls tool, gets empty results
-	llm := &testutil.FakeLLM{
-		Responses: []model.LLMResponse{
-			{
-				Content: &genai.Content{
-					Role: genai.RoleModel,
-					Parts: []*genai.Part{
-						{
-							FunctionCall: &genai.FunctionCall{
-								Name: "search_memory",
-								Args: map[string]any{"query": "unknown topic"},
-							},
+	llm := testutil.NewFakeLLM(
+		model.LLMResponse{
+			Content: &genai.Content{
+				Role: genai.RoleModel,
+				Parts: []*genai.Part{
+					{
+						FunctionCall: &genai.FunctionCall{
+							Name: "search_memory",
+							Args: map[string]any{"query": "something random"},
 						},
 					},
 				},
 			},
-			{
-				Content: genai.NewContentFromText(
-					"I don't have any information about that in my memory.",
-					genai.RoleModel,
-				),
-			},
 		},
-	}
+		model.LLMResponse{
+			Content: genai.NewContentFromText("I couldn't find any relevant information.", genai.RoleModel),
+		},
+	)
 
-	memTool, _ := memory.NewMemoryTool(storage)
+	provider := memory.NewProvider(memory.ProviderConfig{Storage: storage})
+	memTool := memory.NewMemoryTool(provider)
 	agent, err := llmagent.New(llmagent.Config{
 		Name:  "assistant",
 		Model: llm,
@@ -212,10 +201,8 @@ func TestMemoryTool_NoResults(t *testing.T) {
 func TestMemoryTool_ToolSchema(t *testing.T) {
 	storage := adapter.InMemory()
 
-	memTool, err := memory.NewMemoryTool(storage)
-	if err != nil {
-		t.Fatalf("NewMemoryTool error = %v", err)
-	}
+	provider := memory.NewProvider(memory.ProviderConfig{Storage: storage})
+	memTool := memory.NewMemoryTool(provider)
 
 	// Verify tool declaration
 	decl := memTool.Declaration()

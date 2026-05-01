@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ieshan/adk-go-memory/internal/testutil"
+	"github.com/ieshan/adk-go-pkg/testutil"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
 )
@@ -133,7 +133,7 @@ func TestSummarizationStrategy_MissingLLM(t *testing.T) {
 }
 
 func TestSummarizationStrategy_EmptyEvents(t *testing.T) {
-	strategy := &SummarizationStrategy{LLM: &testutil.FakeGenaiLLM{}}
+	strategy := &SummarizationStrategy{LLM: testutil.NewFakeLLM()}
 	got, err := strategy.Compact(context.Background(), []*session.Event{})
 	if err != nil {
 		t.Errorf("SummarizationStrategy.Compact() error = %v", err)
@@ -144,7 +144,7 @@ func TestSummarizationStrategy_EmptyEvents(t *testing.T) {
 }
 
 func TestSummarizationStrategy_Compact_WithLLM(t *testing.T) {
-	llm := &testutil.FakeGenaiLLM{Response: "Key facts: user likes Go, prefers dark mode"}
+	llm := testutil.NewFakeLLM(testutil.NewTextResponse("Key facts: user likes Go, prefers dark mode"))
 	strategy := &SummarizationStrategy{LLM: llm}
 
 	events := createEvents(5)
@@ -167,7 +167,7 @@ func TestSummarizationStrategy_Compact_WithLLM(t *testing.T) {
 }
 
 func TestSummarizationStrategy_Compact_CustomInstruction(t *testing.T) {
-	llm := &testutil.FakeGenaiLLM{Response: "Custom summary"}
+	llm := testutil.NewFakeLLM(testutil.NewTextResponse("Custom summary"))
 	strategy := &SummarizationStrategy{
 		LLM:         llm,
 		Instruction: "Custom prompt: %s",
@@ -187,7 +187,7 @@ func TestSummarizationStrategy_Compact_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	strategy := &SummarizationStrategy{LLM: &testutil.FakeGenaiLLM{}}
+	strategy := &SummarizationStrategy{LLM: testutil.NewFakeLLM()}
 	_, err := strategy.Compact(ctx, createEvents(3))
 	if err == nil {
 		t.Error("Expected error for cancelled context, got nil")
@@ -195,7 +195,7 @@ func TestSummarizationStrategy_Compact_ContextCancelled(t *testing.T) {
 }
 
 func TestSummarizationStrategy_Compact_EmptySummaryResponse(t *testing.T) {
-	llm := &testutil.FakeGenaiLLM{Response: "", AllowEmpty: true}
+	llm := testutil.NewFakeLLM(testutil.NewTextResponse(""))
 	strategy := &SummarizationStrategy{LLM: llm}
 
 	_, err := strategy.Compact(context.Background(), createEvents(3))
@@ -205,8 +205,10 @@ func TestSummarizationStrategy_Compact_EmptySummaryResponse(t *testing.T) {
 }
 
 func TestSummarizationStrategy_Compact_LLMError(t *testing.T) {
+	llm := testutil.NewFakeLLM()
+	llm.SetError(fmt.Errorf("LLM error"))
 	strategy := &SummarizationStrategy{
-		LLM: &testutil.ErrorGenaiLLM{},
+		LLM: llm,
 	}
 
 	_, err := strategy.Compact(context.Background(), createEvents(3))

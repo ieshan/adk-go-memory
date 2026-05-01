@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
-	"github.com/ieshan/adk-go-memory/internal/testutil"
+	"github.com/ieshan/adk-go-pkg/testutil"
 	"github.com/ieshan/idx"
 )
 
@@ -60,7 +60,10 @@ func TestMemoryTool_Run_WithResults(t *testing.T) {
 	provider := NewProvider(ProviderConfig{Storage: storage})
 	tool := NewMemoryTool(provider)
 
-	tc := testutil.NewFakeToolContext("user1", "test-app")
+	cbCtx := testutil.NewFakeCallbackContext().
+		WithUserID("user1").
+		WithAppName("test-app")
+	tc := testutil.NewFakeToolContext(cbCtx)
 	args := map[string]any{"query": "hiking"}
 	result, err := tool.Run(tc, args)
 	if err != nil {
@@ -85,7 +88,10 @@ func TestMemoryTool_Run_NoResults(t *testing.T) {
 	provider := NewProvider(ProviderConfig{Storage: storage})
 	tool := NewMemoryTool(provider)
 
-	tc := testutil.NewFakeToolContext("user1", "test-app")
+	cbCtx := testutil.NewFakeCallbackContext().
+		WithUserID("user1").
+		WithAppName("test-app")
+	tc := testutil.NewFakeToolContext(cbCtx)
 	args := map[string]any{"query": "nonexistent"}
 	result, err := tool.Run(tc, args)
 	if err != nil {
@@ -107,7 +113,10 @@ func TestMemoryTool_Run_MissingQuery(t *testing.T) {
 	provider := NewProvider(ProviderConfig{Storage: storage})
 	tool := NewMemoryTool(provider)
 
-	tc := testutil.NewFakeToolContext("user1", "test-app")
+	cbCtx := testutil.NewFakeCallbackContext().
+		WithUserID("user1").
+		WithAppName("test-app")
+	tc := testutil.NewFakeToolContext(cbCtx)
 	args := map[string]any{"max_results": 5.0}
 	_, err := tool.Run(tc, args)
 	if err == nil {
@@ -131,7 +140,10 @@ func TestMemoryTool_Run_EmptyQuery(t *testing.T) {
 	provider := NewProvider(ProviderConfig{Storage: storage})
 	tool := NewMemoryTool(provider)
 
-	tc := testutil.NewFakeToolContext("user1", "test-app")
+	cbCtx := testutil.NewFakeCallbackContext().
+		WithUserID("user1").
+		WithAppName("test-app")
+	tc := testutil.NewFakeToolContext(cbCtx)
 	args := map[string]any{"query": ""}
 	result, err := tool.Run(tc, args)
 	if err != nil {
@@ -163,7 +175,10 @@ func TestMemoryTool_Run_WithMaxResults(t *testing.T) {
 	provider := NewProvider(ProviderConfig{Storage: storage})
 	tool := NewMemoryTool(provider)
 
-	tc := testutil.NewFakeToolContext("user1", "test-app")
+	cbCtx := testutil.NewFakeCallbackContext().
+		WithUserID("user1").
+		WithAppName("test-app")
+	tc := testutil.NewFakeToolContext(cbCtx)
 	args := map[string]any{"query": "test", "max_results": 2.0}
 	result, err := tool.Run(tc, args)
 	if err != nil {

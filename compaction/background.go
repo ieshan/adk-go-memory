@@ -21,6 +21,7 @@ import (
 
 	"github.com/ieshan/adk-go-memory/adapter"
 	"github.com/ieshan/idx"
+	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 )
 
@@ -34,15 +35,11 @@ import (
 //	summary, _ := compactor.CreateCompactionSummary(ctx, obs, opts)
 type BackgroundCompactor struct {
 	storage adapter.Storage
-	llm     interface {
-		GenerateContent(ctx context.Context, contents ...*genai.Content) (*genai.GenerateContentResponse, error)
-	}
+	llm     model.LLM
 }
 
 // NewBackgroundCompactor creates a background compactor.
-func NewBackgroundCompactor(storage adapter.Storage, llm interface {
-	GenerateContent(ctx context.Context, contents ...*genai.Content) (*genai.GenerateContentResponse, error)
-}) *BackgroundCompactor {
+func NewBackgroundCompactor(storage adapter.Storage, llm model.LLM) *BackgroundCompactor {
 	return &BackgroundCompactor{storage: storage, llm: llm}
 }
 
@@ -113,10 +110,20 @@ func (bc *BackgroundCompactor) CreateCompactionSummary(ctx context.Context, obse
 	if instruction == "" {
 		instruction = defaultBackgroundSummaryPrompt
 	}
-	resp, err := bc.llm.GenerateContent(ctx, genai.NewContentFromText(fmt.Sprintf(instruction, text), genai.RoleUser))
-	if err != nil {
-		return nil, fmt.Errorf("compaction: create summary: LLM failed: %w", err)
+
+	req := &model.LLMRequest{
+		Contents: []*genai.Content{genai.NewContentFromText(fmt.Sprintf(instruction, text), genai.RoleUser)},
 	}
+
+	var resp *model.LLMResponse
+	for r, err := range bc.llm.GenerateContent(ctx, req, false) {
+		if err != nil {
+			return nil, fmt.Errorf("compaction: create summary: LLM failed: %w", err)
+		}
+		resp = r
+		break // Non-streaming, take first response
+	}
+
 	summaryText := ExtractSummaryText(resp)
 	if summaryText == "" {
 		return nil, fmt.Errorf("compaction: create summary: empty summary")

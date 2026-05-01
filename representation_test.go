@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
-	"github.com/ieshan/adk-go-memory/internal/testutil"
+	"github.com/ieshan/adk-go-memory/testutil"
 	"github.com/ieshan/idx"
 )
 

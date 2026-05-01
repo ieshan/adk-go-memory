@@ -10,7 +10,7 @@ import (
 
 	memory "github.com/ieshan/adk-go-memory"
 	"github.com/ieshan/adk-go-memory/adapter"
-	"github.com/ieshan/adk-go-memory/internal/testutil"
+	"github.com/ieshan/adk-go-pkg/testutil"
 	"google.golang.org/adk/model"
 )
 
@@ -20,16 +20,12 @@ func TestSubAgents_MemoryExtraction(t *testing.T) {
 	ctx := context.Background()
 
 	// Fake LLM for deriver to extract observations
-	llm := &testutil.FakeLLM{
-		Responses: []model.LLMResponse{
-			{
-				Content: genai.NewContentFromText(
-					`{"observations":[{"content":"user name is Bob","level":"explicit"}]}`,
-					genai.RoleModel,
-				),
-			},
-		},
-	}
+	llm := testutil.NewFakeLLM(model.LLMResponse{
+		Content: genai.NewContentFromText(
+			`{"observations":[{"content":"user name is Bob","level":"explicit"}]}`,
+			genai.RoleModel,
+		),
+	})
 
 	// Setup storage + memory service
 	storage := adapter.InMemory()
@@ -63,16 +59,12 @@ func TestSubAgents_MemoryExtractedFromAllAgents(t *testing.T) {
 	ctx := context.Background()
 
 	// Fake LLM returns observations for all messages in a single batched call
-	llm := &testutil.FakeLLM{
-		Responses: []model.LLMResponse{
-			{
-				Content: genai.NewContentFromText(
-					`{"observations":[{"content":"user lives in NYC","level":"explicit"},{"content":"user prefers morning greetings","level":"deductive"}]}`,
-					genai.RoleModel,
-				),
-			},
-		},
-	}
+	llm := testutil.NewFakeLLM(model.LLMResponse{
+		Content: genai.NewContentFromText(
+			`{"observations":[{"content":"user lives in NYC","level":"explicit"},{"content":"user prefers morning greetings","level":"deductive"}]}`,
+			genai.RoleModel,
+		),
+	})
 
 	storage := adapter.InMemory()
 	defer storage.Close()

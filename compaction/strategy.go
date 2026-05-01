@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"time"
 
+	"google.golang.org/adk/model"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
 )
@@ -69,9 +70,7 @@ func (t *TruncationStrategy) Compact(ctx context.Context, events []*session.Even
 type SummarizationStrategy struct {
 	// LLM is the language model used for summarization.
 	// Required.
-	LLM interface {
-		GenerateContent(ctx context.Context, contents ...*genai.Content) (*genai.GenerateContentResponse, error)
-	}
+	LLM model.LLM
 
 	// Instruction is the prompt template for summarization.
 	// If empty, a default prompt is used.
@@ -104,9 +103,17 @@ func (s *SummarizationStrategy) Compact(ctx context.Context, events []*session.E
 	prompt := s.buildPrompt(events)
 
 	// Generate summary using LLM
-	response, err := s.LLM.GenerateContent(ctx, genai.NewContentFromText(prompt, genai.RoleUser))
-	if err != nil {
-		return nil, fmt.Errorf("compaction: summarize: LLM generation failed: %w", err)
+	req := &model.LLMRequest{
+		Contents: []*genai.Content{genai.NewContentFromText(prompt, genai.RoleUser)},
+	}
+
+	var response *model.LLMResponse
+	for resp, err := range s.LLM.GenerateContent(ctx, req, false) {
+		if err != nil {
+			return nil, fmt.Errorf("compaction: summarize: LLM generation failed: %w", err)
+		}
+		response = resp
+		break // Non-streaming, take first response
 	}
 
 	// Extract summary text from response

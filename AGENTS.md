@@ -143,9 +143,10 @@ cd adapter/sqlite && CGO_ENABLED=1 go vet -tags=sqlite_fts5 ./...
 ## Testing Approach Observed
 
 - Tests are colocated `*_test.go` across root, adapter, submodule, and examples.
-- Fake LLM implementations are used for deterministic testing:
-  - root: `fakeLLM` in `deriver.go`
-  - examples: `examples/internal/testutil/fakellm.go`
+- Fake implementations from `github.com/ieshan/adk-go-pkg/testutil` are used for deterministic testing:
+  - `FakeLLM`: implements `model.LLM` with configurable responses
+  - `FakeSession`, `FakeState`, `FakeEvents`: implement session interfaces
+  - `FakeToolContext`: implements `tool.Context` for testing tools
 - SQLite tests use `InMemory()` storage from sqlite submodule and validate:
   - vector/fts/hybrid behavior
   - table sync on delete/purge

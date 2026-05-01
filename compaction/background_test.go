@@ -20,8 +20,9 @@ import (
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
-	"github.com/ieshan/adk-go-memory/internal/testutil"
+	"github.com/ieshan/adk-go-pkg/testutil"
 	"github.com/ieshan/idx"
+	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 )
 
@@ -29,7 +30,7 @@ func TestNewBackgroundCompactor(t *testing.T) {
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &testutil.FakeGenaiLLM{}
+	llm := testutil.NewFakeLLM()
 	bc := NewBackgroundCompactor(storage, llm)
 
 	if bc == nil {
@@ -146,10 +147,7 @@ func TestBackgroundCompactor_CreateCompactionSummary(t *testing.T) {
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &testutil.FakeGenaiLLM{
-		Response: "Summary of old observations about user preferences and facts",
-	}
-
+	llm := testutil.NewFakeLLM(testutil.NewTextResponse("Summary of old observations about user preferences and facts"))
 	bc := NewBackgroundCompactor(storage, llm)
 
 	now := time.Now()
@@ -265,7 +263,7 @@ func TestBackgroundCompactor_CreateCompactionSummary_EmptyObservations(t *testin
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &testutil.FakeGenaiLLM{}
+	llm := testutil.NewFakeLLM()
 	bc := NewBackgroundCompactor(storage, llm)
 
 	_, err := bc.CreateCompactionSummary(ctx, []CompactionObservation{}, SummaryOptions{})
@@ -280,7 +278,7 @@ func TestBackgroundCompactor_CreateCompactionSummary_EmptySummaryResponse(t *tes
 	defer storage.Close()
 
 	// Mock LLM that returns empty response
-	llm := &testutil.FakeGenaiLLM{Response: "", AllowEmpty: true}
+	llm := testutil.NewFakeLLM(testutil.NewTextResponse(""))
 	bc := NewBackgroundCompactor(storage, llm)
 
 	observations := []CompactionObservation{
@@ -303,7 +301,7 @@ func TestBackgroundCompactor_CreateCompactionSummary_DefaultPrompt(t *testing.T)
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &testutil.FakeGenaiLLM{Response: "Default prompt summary"}
+	llm := testutil.NewFakeLLM(testutil.NewTextResponse("Default prompt summary"))
 	bc := NewBackgroundCompactor(storage, llm)
 
 	observations := []CompactionObservation{
@@ -515,7 +513,7 @@ func TestBackgroundCompactor_PurgeArchivedObservations_EmptyStorage(t *testing.T
 func TestExtractSummaryText(t *testing.T) {
 	tests := []struct {
 		name     string
-		response *genai.GenerateContentResponse
+		response *model.LLMResponse
 		want     string
 	}{
 		{
@@ -524,31 +522,14 @@ func TestExtractSummaryText(t *testing.T) {
 			want:     "",
 		},
 		{
-			name: "empty candidates",
-			response: &genai.GenerateContentResponse{
-				Candidates: []*genai.Candidate{},
-			},
-			want: "",
+			name:     "nil content",
+			response: &model.LLMResponse{Content: nil},
+			want:     "",
 		},
 		{
-			name: "nil content",
-			response: &genai.GenerateContentResponse{
-				Candidates: []*genai.Candidate{
-					{Content: nil},
-				},
-			},
-			want: "",
-		},
-		{
-			name: "valid response with text",
-			response: &genai.GenerateContentResponse{
-				Candidates: []*genai.Candidate{
-					{
-						Content: genai.NewContentFromText("Summary text", genai.RoleModel),
-					},
-				},
-			},
-			want: "Summary text",
+			name:     "valid response with text",
+			response: &model.LLMResponse{Content: genai.NewContentFromText("Summary text", genai.RoleModel)},
+			want:     "Summary text",
 		},
 	}
 
@@ -564,7 +545,7 @@ func TestExtractSummaryText(t *testing.T) {
 
 func TestBackgroundCompactor_CreateCompactionSummary_ContextCancelled(t *testing.T) {
 	storage := adapter.InMemory()
-	llm := &testutil.FakeGenaiLLM{Response: "summary text"}
+	llm := testutil.NewFakeLLM(testutil.NewTextResponse("summary text"))
 	bc := NewBackgroundCompactor(storage, llm)
 
 	observations := []CompactionObservation{

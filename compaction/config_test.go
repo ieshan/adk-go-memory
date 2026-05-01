@@ -17,7 +17,7 @@ package compaction
 import (
 	"testing"
 
-	"github.com/ieshan/adk-go-memory/internal/testutil"
+	"github.com/ieshan/adk-go-pkg/testutil"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
 )
@@ -208,10 +208,7 @@ func TestConfig_ShouldCompact_MaxEvents(t *testing.T) {
 			for i := 0; i < tt.eventCount; i++ {
 				events[i] = &session.Event{}
 			}
-			sess := &testutil.FakeSessionWithEvents{
-				FakeSession: testutil.FakeSession{},
-				EventsData:  events,
-			}
+			sess := testutil.NewFakeSession().WithEvents(events...)
 			compactionState := &state{}
 
 			got, reason := cfg.ShouldCompact(sess, compactionState)
@@ -265,10 +262,7 @@ func TestConfig_ShouldCompact_Interval(t *testing.T) {
 			for i := 0; i < tt.eventCount; i++ {
 				events[i] = &session.Event{}
 			}
-			sess := &testutil.FakeSessionWithEvents{
-				FakeSession: testutil.FakeSession{},
-				EventsData:  events,
-			}
+			sess := testutil.NewFakeSession().WithEvents(events...)
 			compactionState := &state{LastEventCount: tt.lastEventCount}
 
 			got, _ := cfg.ShouldCompact(sess, compactionState)
@@ -306,10 +300,7 @@ func TestConfig_ShouldCompact_MaxTokens(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sess := &testutil.FakeSessionWithEvents{
-				FakeSession: testutil.FakeSession{},
-				EventsData:  tt.events,
-			}
+			sess := testutil.NewFakeSession().WithEvents(tt.events...)
 			compactionState := &state{}
 
 			got, reason := cfg.ShouldCompact(sess, compactionState)
@@ -337,10 +328,7 @@ func TestConfig_ShouldCompact_IntervalAfterCompaction(t *testing.T) {
 	for i := 0; i < 25; i++ {
 		events[i] = &session.Event{}
 	}
-	sess := &testutil.FakeSessionWithEvents{
-		FakeSession: testutil.FakeSession{},
-		EventsData:  events,
-	}
+	sess := testutil.NewFakeSession().WithEvents(events...)
 	compactionState := &state{LastEventCount: 20}
 
 	got, _ := cfg.ShouldCompact(sess, compactionState)
@@ -354,10 +342,7 @@ func TestConfig_ShouldCompact_IntervalAfterCompaction(t *testing.T) {
 	for i := 0; i < 30; i++ {
 		events2[i] = &session.Event{}
 	}
-	sess2 := &testutil.FakeSessionWithEvents{
-		FakeSession: testutil.FakeSession{},
-		EventsData:  events2,
-	}
+	sess2 := testutil.NewFakeSession().WithEvents(events2...)
 	got2, reason := cfg.ShouldCompact(sess2, compactionState)
 	if !got2 {
 		t.Error("ShouldCompact() = false, want true (10 new events since last compaction equals interval 10)")
@@ -377,10 +362,7 @@ func TestConfig_ShouldCompact_NoTriggers(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		events[i] = &session.Event{}
 	}
-	sess := &testutil.FakeSessionWithEvents{
-		FakeSession: testutil.FakeSession{},
-		EventsData:  events,
-	}
+	sess := testutil.NewFakeSession().WithEvents(events...)
 	compactionState := &state{}
 
 	got, _ := cfg.ShouldCompact(sess, compactionState)
@@ -426,10 +408,7 @@ func TestConfig_estimateTokens(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sess := &testutil.FakeSessionWithEvents{
-				FakeSession: testutil.FakeSession{},
-				EventsData:  tt.events,
-			}
+			sess := testutil.NewFakeSession().WithEvents(tt.events...)
 			got := cfg.estimateTokens(sess, tt.startIndex)
 			// Allow some tolerance for token estimation
 			diff := got - tt.wantApprox
@@ -469,11 +448,8 @@ func TestGetCompactionState(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sess := &testutil.FakeSessionWithState{
-				FakeSession: testutil.FakeSession{},
-				StateKey:    tt.key,
-				StateValue:  tt.stateValue,
-			}
+			state := testutil.NewFakeStateWithData(map[string]any{tt.key: tt.stateValue})
+			sess := testutil.NewFakeSession().WithState(state.Data)
 			_, err := GetCompactionState(sess, tt.key)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetCompactionState() error = %v, wantErr %v", err, tt.wantErr)
@@ -483,7 +459,7 @@ func TestGetCompactionState(t *testing.T) {
 }
 
 func TestSaveCompactionState(t *testing.T) {
-	sess := &testutil.FakeSessionWithState{FakeSession: testutil.FakeSession{}}
+	sess := testutil.NewFakeSession()
 	st := &state{
 		LastCompactedIndex: 10,
 		TotalCompactions:   5,
@@ -543,10 +519,7 @@ func TestGetEventsForCompaction(t *testing.T) {
 				}
 				events[i].Content = genai.NewContentFromText("test", genai.RoleUser)
 			}
-			sess := &testutil.FakeSessionWithEvents{
-				FakeSession: testutil.FakeSession{},
-				EventsData:  events,
-			}
+			sess := testutil.NewFakeSession().WithEvents(events...)
 
 			got := GetEventsForCompaction(sess, tt.lastCompactedIdx, tt.keepRecent)
 			if len(got) != tt.wantLen {

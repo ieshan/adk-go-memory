@@ -327,16 +327,12 @@ func SummaryEvent(summary string) *session.Event {
 
 // ExtractSummaryText extracts the first text part from an LLM response.
 // Returns empty string if response is nil or has no text content.
-func ExtractSummaryText(response *genai.GenerateContentResponse) string {
-	if response == nil || len(response.Candidates) == 0 {
-		return ""
-	}
-	candidate := response.Candidates[0]
-	if candidate.Content == nil {
+func ExtractSummaryText(response *model.LLMResponse) string {
+	if response == nil || response.Content == nil {
 		return ""
 	}
 	var summary string
-	for _, part := range candidate.Content.Parts {
+	for _, part := range response.Content.Parts {
 		if part != nil && part.Text != "" {
 			summary += part.Text
 		}

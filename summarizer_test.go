@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
-	"github.com/ieshan/adk-go-memory/internal/testutil"
+	"github.com/ieshan/adk-go-pkg/testutil"
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 )
@@ -51,15 +51,13 @@ func TestSummarizer_Summarize(t *testing.T) {
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &testutil.FakeLLM{
-		Responses: []model.LLMResponse{{
-			Content: &genai.Content{
-				Parts: []*genai.Part{{
-					Text: "Summary of conversation about Go programming.",
-				}},
-			},
-		}},
-	}
+	llm := testutil.NewFakeLLM(model.LLMResponse{
+		Content: &genai.Content{
+			Parts: []*genai.Part{{
+				Text: "Summary of observations about Go programming.",
+			}},
+		},
+	})
 
 	summarizer := NewSummarizer(SummarizerConfig{
 		LLM:     llm,
@@ -89,7 +87,7 @@ func TestSummarizer_Summarize_EmptyMessages(t *testing.T) {
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &testutil.FakeLLM{}
+	llm := testutil.NewFakeLLM()
 	summarizer := NewSummarizer(SummarizerConfig{
 		LLM:     llm,
 		Storage: storage,
@@ -105,7 +103,7 @@ func TestSummarizer_DefaultIntervals(t *testing.T) {
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &testutil.FakeLLM{}
+	llm := testutil.NewFakeLLM()
 	summarizer := NewSummarizer(SummarizerConfig{
 		LLM:     llm,
 		Storage: storage,
@@ -128,7 +126,7 @@ func TestSummarizer_StoreAndGetBothSummaries(t *testing.T) {
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &testutil.FakeLLM{}
+	llm := testutil.NewFakeLLM()
 	summarizer := NewSummarizer(SummarizerConfig{
 		LLM:     llm,
 		Storage: storage,
@@ -190,7 +188,7 @@ func TestSummarizer_StoreAndGetSummaries_ContentWithoutSummaryWord(t *testing.T)
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &testutil.FakeLLM{}
+	llm := testutil.NewFakeLLM()
 	summarizer := NewSummarizer(SummarizerConfig{
 		LLM:     llm,
 		Storage: storage,
@@ -231,7 +229,7 @@ func TestSummarizer_GetBothSummaries_NoSummaries(t *testing.T) {
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &testutil.FakeLLM{}
+	llm := testutil.NewFakeLLM()
 	summarizer := NewSummarizer(SummarizerConfig{
 		LLM:     llm,
 		Storage: storage,
@@ -254,7 +252,8 @@ func TestSummarizer_Summarize_LLMError(t *testing.T) {
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &testutil.FakeLLM{} // No responses configured -> returns error
+	llm := testutil.NewFakeLLM()
+	llm.SetError(fmt.Errorf("LLM error"))
 	summarizer := NewSummarizer(SummarizerConfig{
 		LLM:     llm,
 		Storage: storage,
@@ -266,7 +265,7 @@ func TestSummarizer_Summarize_LLMError(t *testing.T) {
 
 	_, err := summarizer.Summarize(ctx, msgs)
 	if err == nil {
-		t.Error("Expected error when LLM has no responses")
+		t.Error("Expected error when LLM returns an error")
 	}
 }
 

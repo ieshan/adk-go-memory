@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
-	"github.com/ieshan/adk-go-memory/internal/testutil"
+	"github.com/ieshan/adk-go-pkg/testutil"
 	"github.com/ieshan/idx"
 	"google.golang.org/adk/memory"
 	"google.golang.org/adk/model"
@@ -18,34 +18,32 @@ func TestService_AddSessionToMemory_ExtractsObservations(t *testing.T) {
 	ctx := context.Background()
 	storage := adapter.InMemory()
 
-	llm := &testutil.FakeLLM{
-		Responses: []model.LLMResponse{{
-			Content: &genai.Content{
-				Parts: []*genai.Part{{
-					Text: `{"observations":[{"content":"user is 25 years old","level":"explicit"}]}`,
-				}},
-			},
-		}},
-	}
+	llm := testutil.NewFakeLLM(model.LLMResponse{
+		Content: &genai.Content{
+			Parts: []*genai.Part{{
+				Text: `{"observations":[{"content":"user is 25 years old","level":"explicit"}]}`,
+			}},
+		},
+	})
 
 	deriver := NewDeriver(DeriverConfig{LLM: llm, Storage: storage})
 	provider := NewProvider(ProviderConfig{Storage: storage})
 	svc := NewService(ServiceConfig{Provider: provider, Deriver: deriver})
 
-	sess := &testutil.FakeSession{
-		IDVal:      "sess-1",
-		UserIDVal:  "u1",
-		AppNameVal: "app1",
-		EventsVal: []*session.Event{
-			{
-				LLMResponse: model.LLMResponse{
-					Content: genai.NewContentFromText("I'm 25 years old", genai.RoleUser),
-				},
-				Author:    "user",
-				Timestamp: time.Now(),
+	events := []*session.Event{
+		{
+			LLMResponse: model.LLMResponse{
+				Content: genai.NewContentFromText("I'm 25 years old", genai.RoleUser),
 			},
+			Author:    "user",
+			Timestamp: time.Now(),
 		},
 	}
+	sess := testutil.NewFakeSession().
+		WithID("sess-1").
+		WithUserID("u1").
+		WithAppName("app1").
+		WithEvents(events...)
 
 	if err := svc.AddSessionToMemory(ctx, sess); err != nil {
 		t.Fatalf("AddSessionToMemory() error = %v", err)
@@ -123,9 +121,7 @@ func TestService_AddSessionToMemory_NilDeriver(t *testing.T) {
 
 	svc := NewService(ServiceConfig{Storage: storage}) // No deriver
 
-	sess := &testutil.FakeSession{
-		IDVal: "s1",
-	}
+	sess := testutil.NewFakeSession().WithID("s1")
 	if err := svc.AddSessionToMemory(ctx, sess); err != nil {
 		t.Fatalf("AddSessionToMemory() with nil deriver error = %v", err)
 	}
@@ -147,14 +143,11 @@ func TestService_AddSessionToMemory_NilEvents(t *testing.T) {
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &testutil.FakeLLM{}
+	llm := testutil.NewFakeLLM()
 	deriver := NewDeriver(DeriverConfig{LLM: llm, Storage: storage})
 	svc := NewService(ServiceConfig{Storage: storage, Deriver: deriver})
 
-	sess := &testutil.FakeSession{
-		IDVal:     "s1",
-		EventsVal: nil,
-	}
+	sess := testutil.NewFakeSession().WithID("s1")
 	if err := svc.AddSessionToMemory(ctx, sess); err != nil {
 		t.Fatalf("AddSessionToMemory() with nil events error = %v", err)
 	}
@@ -165,20 +158,17 @@ func TestService_AddSessionToMemory_EmptyEvents(t *testing.T) {
 	storage := adapter.InMemory()
 	defer storage.Close()
 
-	llm := &testutil.FakeLLM{}
+	llm := testutil.NewFakeLLM()
 	deriver := NewDeriver(DeriverConfig{LLM: llm, Storage: storage})
 	svc := NewService(ServiceConfig{Storage: storage, Deriver: deriver})
 
-	sess := &testutil.FakeSession{
-		IDVal:     "s1",
-		EventsVal: []*session.Event{},
-	}
+	sess := testutil.NewFakeSession().WithID("s1")
 	if err := svc.AddSessionToMemory(ctx, sess); err != nil {
 		t.Fatalf("AddSessionToMemory() with empty events error = %v", err)
 	}
 
 	// No LLM call should happen
-	if len(llm.Calls) != 0 {
+	if llm.CallCount() != 0 {
 		t.Error("Expected no LLM call for empty events")
 	}
 }
@@ -230,36 +220,34 @@ func TestService_AddSessionToMemory_MultiPartContent(t *testing.T) {
 	ctx := context.Background()
 	storage := adapter.InMemory()
 
-	llm := &testutil.FakeLLM{
-		Responses: []model.LLMResponse{{
-			Content: &genai.Content{
-				Parts: []*genai.Part{{
-					Text: `{"observations":[{"content":"user likes both Go and Python","level":"explicit"}]}`,
-				}},
-			},
-		}},
-	}
+	llm := testutil.NewFakeLLM(model.LLMResponse{
+		Content: &genai.Content{
+			Parts: []*genai.Part{{
+				Text: `{"observations":[{"content":"user likes both Go and Python","level":"explicit"}]}`,
+			}},
+		},
+	})
 
 	deriver := NewDeriver(DeriverConfig{LLM: llm, Storage: storage})
 	svc := NewService(ServiceConfig{Storage: storage, Deriver: deriver})
 
-	sess := &testutil.FakeSession{
-		IDVal:      "sess-multi",
-		UserIDVal:  "u1",
-		AppNameVal: "app1",
-		EventsVal: []*session.Event{
-			{
-				LLMResponse: model.LLMResponse{
-					Content: &genai.Content{
-						Role:  "user",
-						Parts: []*genai.Part{{Text: "I like Go"}, {Text: "and Python"}},
-					},
+	events := []*session.Event{
+		{
+			LLMResponse: model.LLMResponse{
+				Content: &genai.Content{
+					Role:  "user",
+					Parts: []*genai.Part{{Text: "I like Go"}, {Text: "and Python"}},
 				},
-				Author:    "user",
-				Timestamp: time.Now(),
 			},
+			Author:    "user",
+			Timestamp: time.Now(),
 		},
 	}
+	sess := testutil.NewFakeSession().
+		WithID("sess-multi").
+		WithUserID("u1").
+		WithAppName("app1").
+		WithEvents(events...)
 
 	if err := svc.AddSessionToMemory(ctx, sess); err != nil {
 		t.Fatalf("AddSessionToMemory() error = %v", err)
@@ -283,36 +271,34 @@ func TestService_AddSessionToMemory_SkipsEmptyParts(t *testing.T) {
 	ctx := context.Background()
 	storage := adapter.InMemory()
 
-	llm := &testutil.FakeLLM{
-		Responses: []model.LLMResponse{{
-			Content: &genai.Content{
-				Parts: []*genai.Part{{
-					Text: `{"observations":[{"content":"user said hello","level":"explicit"}]}`,
-				}},
-			},
-		}},
-	}
+	llm := testutil.NewFakeLLM(model.LLMResponse{
+		Content: &genai.Content{
+			Parts: []*genai.Part{{
+				Text: `{"observations":[{"content":"user said hello","level":"explicit"}]}`,
+			}},
+		},
+	})
 
 	deriver := NewDeriver(DeriverConfig{LLM: llm, Storage: storage})
 	svc := NewService(ServiceConfig{Storage: storage, Deriver: deriver})
 
-	sess := &testutil.FakeSession{
-		IDVal:      "sess-skip",
-		UserIDVal:  "u1",
-		AppNameVal: "app1",
-		EventsVal: []*session.Event{
-			{
-				LLMResponse: model.LLMResponse{
-					Content: &genai.Content{
-						Role:  "user",
-						Parts: []*genai.Part{{Text: ""}, {Text: "hello"}, {Text: ""}},
-					},
+	events := []*session.Event{
+		{
+			LLMResponse: model.LLMResponse{
+				Content: &genai.Content{
+					Role:  "user",
+					Parts: []*genai.Part{{Text: ""}, {Text: "hello"}, {Text: ""}},
 				},
-				Author:    "user",
-				Timestamp: time.Now(),
 			},
+			Author:    "user",
+			Timestamp: time.Now(),
 		},
 	}
+	sess := testutil.NewFakeSession().
+		WithID("sess-skip").
+		WithUserID("u1").
+		WithAppName("app1").
+		WithEvents(events...)
 
 	if err := svc.AddSessionToMemory(ctx, sess); err != nil {
 		t.Fatalf("AddSessionToMemory() error = %v", err)
@@ -323,15 +309,13 @@ func TestService_AddSessionToMemory_DeltaMode_ProcessesOnlyNewEvents(t *testing.
 	ctx := context.Background()
 	storage := adapter.InMemory()
 
-	llm := &testutil.FakeLLM{
-		Responses: []model.LLMResponse{{
-			Content: &genai.Content{
-				Parts: []*genai.Part{{
-					Text: `{"observations":[{"content":"user fact","level":"explicit"}]}`,
-				}},
-			},
-		}},
-	}
+	llm := testutil.NewFakeLLM(model.LLMResponse{
+		Content: &genai.Content{
+			Parts: []*genai.Part{{
+				Text: `{"observations":[{"content":"user fact","level":"explicit"}]}`,
+			}},
+		},
+	})
 
 	deriver := NewDeriver(DeriverConfig{LLM: llm, Storage: storage})
 	provider := NewProvider(ProviderConfig{Storage: storage})
@@ -345,8 +329,7 @@ func TestService_AddSessionToMemory_DeltaMode_ProcessesOnlyNewEvents(t *testing.
 	})
 
 	// Create session with state containing compaction marker
-	state := &testutil.FakeState{}
-	state.Set("test_compaction_state", map[string]interface{}{"last_compacted_index": 1})
+	state := testutil.NewFakeStateWithData(map[string]any{"test_compaction_state": map[string]interface{}{"last_compacted_index": 1}})
 
 	events := []*session.Event{
 		{
@@ -366,13 +349,12 @@ func TestService_AddSessionToMemory_DeltaMode_ProcessesOnlyNewEvents(t *testing.
 		},
 	}
 
-	sess := &testutil.FakeSession{
-		IDVal:      "sess-delta",
-		UserIDVal:  "u1",
-		AppNameVal: "app1",
-		EventsVal:  events,
-		StateVal:   state,
-	}
+	sess := testutil.NewFakeSession().
+		WithID("sess-delta").
+		WithUserID("u1").
+		WithAppName("app1").
+		WithEvents(events...).
+		WithState(state.Data)
 
 	if err := svc.AddSessionToMemory(ctx, sess); err != nil {
 		t.Fatalf("AddSessionToMemory() error = %v", err)
@@ -380,8 +362,8 @@ func TestService_AddSessionToMemory_DeltaMode_ProcessesOnlyNewEvents(t *testing.
 
 	// Should only process events after index 1 (third message only)
 	// In delta mode with last_compacted_index=1, only event at index 2 should be processed
-	if len(llm.Calls) != 1 {
-		t.Errorf("Expected 1 LLM call for delta mode, got %d", len(llm.Calls))
+	if llm.CallCount() != 1 {
+		t.Errorf("Expected 1 LLM call for delta mode, got %d", llm.CallCount())
 	}
 }
 
@@ -389,15 +371,13 @@ func TestService_AddSessionToMemory_DeltaMode_NoCompactionState(t *testing.T) {
 	ctx := context.Background()
 	storage := adapter.InMemory()
 
-	llm := &testutil.FakeLLM{
-		Responses: []model.LLMResponse{{
-			Content: &genai.Content{
-				Parts: []*genai.Part{{
-					Text: `{"observations":[{"content":"user fact","level":"explicit"}]}`,
-				}},
-			},
-		}},
-	}
+	llm := testutil.NewFakeLLM(model.LLMResponse{
+		Content: &genai.Content{
+			Parts: []*genai.Part{{
+				Text: `{"observations":[{"content":"user fact","level":"explicit"}]}`,
+			}},
+		},
+	})
 
 	deriver := NewDeriver(DeriverConfig{LLM: llm, Storage: storage})
 	provider := NewProvider(ProviderConfig{Storage: storage})
@@ -423,21 +403,19 @@ func TestService_AddSessionToMemory_DeltaMode_NoCompactionState(t *testing.T) {
 		},
 	}
 
-	sess := &testutil.FakeSession{
-		IDVal:      "sess-delta-no-state",
-		UserIDVal:  "u1",
-		AppNameVal: "app1",
-		EventsVal:  events,
-		StateVal:   testutil.NewFakeState(), // No compaction state set
-	}
+	sess := testutil.NewFakeSession().
+		WithID("sess-delta-no-state").
+		WithUserID("u1").
+		WithAppName("app1").
+		WithEvents(events...)
 
 	if err := svc.AddSessionToMemory(ctx, sess); err != nil {
 		t.Fatalf("AddSessionToMemory() error = %v", err)
 	}
 
 	// Should process all events when no compaction state exists
-	if len(llm.Calls) != 1 {
-		t.Errorf("Expected 1 LLM call for all events, got %d", len(llm.Calls))
+	if llm.CallCount() != 1 {
+		t.Errorf("Expected 1 LLM call for all events, got %d", llm.CallCount())
 	}
 }
 
@@ -472,12 +450,13 @@ func TestService_getLastCompactedIndex(t *testing.T) {
 				CompactionStateKey: "test_state",
 			})
 
-			state := testutil.NewFakeState()
+			stateData := make(map[string]any)
 			if tt.stateValue != nil {
-				state.Set("test_state", tt.stateValue)
+				stateData["test_state"] = tt.stateValue
 			}
+			state := testutil.NewFakeStateWithData(stateData)
 
-			sess := &testutil.FakeSession{IDVal: "s1", StateVal: state}
+			sess := testutil.NewFakeSession().WithID("s1").WithState(state.Data)
 			got := svc.getLastCompactedIndex(sess)
 			if got != tt.wantIndex {
 				t.Errorf("getLastCompactedIndex() = %d, want %d", got, tt.wantIndex)
@@ -497,7 +476,7 @@ func TestService_getEventsSince(t *testing.T) {
 	storage := adapter.InMemory()
 	svc := NewService(ServiceConfig{Storage: storage})
 
-	sess := &testutil.FakeSession{IDVal: "s1", EventsVal: events}
+	sess := testutil.NewFakeSession().WithID("s1").WithEvents(events...)
 
 	tests := []struct {
 		name       string
