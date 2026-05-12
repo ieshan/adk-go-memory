@@ -7,18 +7,23 @@ setup:
 	@echo "Project initialized."
 
 # Default test run (uses map-based MemoryStorage, no CGO required)
+# Override ARGS to target a specific package or test, e.g.:
+#   make test ARGS="./adapter"
+#   make test ARGS="-run TestDeriver"
 test:
-	go test -v ./...
-	cd adapter/sqlite && CGO_ENABLED=1 go test -v -tags=sqlite_fts5 ./...
+	go test -v $(or $(ARGS),./...)
+	cd adapter/sqlite && CGO_ENABLED=1 go test -v -tags=sqlite_fts5 $(or $(ARGS),./...)
 
 # Run SQLite adapter tests (requires CGO)
+# Override ARGS to target a specific test, e.g.:
+#   make test-sqlite ARGS="-run TestSQLiteStorage"
 test-sqlite:
-	cd adapter/sqlite && CGO_ENABLED=1 go test -v -tags=sqlite_fts5 ./...
+	cd adapter/sqlite && CGO_ENABLED=1 go test -v -tags=sqlite_fts5 $(or $(ARGS),./...)
 
 # Run with race detection
 test-race:
-	go test -v -race ./...
-	cd adapter/sqlite && CGO_ENABLED=1 go test -v -race -tags=sqlite_fts5 ./...
+	go test -v -race $(or $(ARGS),./...)
+	cd adapter/sqlite && CGO_ENABLED=1 go test -v -race -tags=sqlite_fts5 $(or $(ARGS),./...)
 
 # Build all packages
 build:

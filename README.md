@@ -423,7 +423,7 @@ type Storage interface {
     // QueryMostDerived returns observations sorted by times_derived DESC.
     QueryMostDerived(ctx context.Context, sessionID, userID, appName string, limit int) ([]Observation, error)
 
-    // QueryRecent returns observations sorted by created_at DESC.
+    // QueryRecent returns observations sorted by id DESC (ULID-based, time-ordered).
     QueryRecent(ctx context.Context, sessionID, userID, appName string, limit int) ([]Observation, error)
 }
 
@@ -463,38 +463,37 @@ func InMemory() *MemoryStorage
 // Located in github.com/ieshan/adk-go-memory/adapter/sqlite submodule.
 func NewSQLiteStorage(path string) (*SQLiteStorage, error)
 
-// NewSQLiteStorageWithDB creates a SQLite storage from an existing *sql.DB connection.
-// The caller retains ownership of the database connection and must close it separately.
+// NewSQLiteStorageWithGORM creates a SQLite storage from an existing *gorm.DB connection.
+// The caller retains ownership of the GORM connection and must close it separately.
 // Located in github.com/ieshan/adk-go-memory/adapter/sqlite submodule.
-func NewSQLiteStorageWithDB(db *sql.DB) (*SQLiteStorage, error)
+func NewSQLiteStorageWithGORM(db *gorm.DB) (*SQLiteStorage, error)
 ```
 
-#### Using an Existing Database Connection
+#### Using an Existing GORM Connection
 
-When integrating with an existing database setup or connection pool:
+When integrating with an existing GORM setup or connection pool:
 
 ```go
 package main
 
 import (
-    "database/sql"
     "log"
 
     "github.com/ieshan/adk-go-memory/adapter/sqlite"
-    _ "github.com/mattn/go-sqlite3"
+    "gorm.io/driver/sqlite"
+    "gorm.io/gorm"
 )
 
 func main() {
-    // You might have an existing database connection
-    db, err := sql.Open("sqlite3", "/path/to/existing.db")
+    // You might have an existing GORM connection
+    db, err := gorm.Open(sqlite.Open("/path/to/existing.db"), &gorm.Config{})
     if err != nil {
         log.Fatal(err)
     }
-    defer db.Close()
 
     // Create storage using the existing connection
     // Caller retains ownership of db
-    storage, err := sqlite.NewSQLiteStorageWithDB(db)
+    storage, err := sqlite.NewSQLiteStorageWithGORM(db)
     if err != nil {
         log.Fatal(err)
     }
@@ -503,6 +502,20 @@ func main() {
     // Use storage normally...
     // db remains usable after storage.Close()
 }
+```
+
+#### Exported GORM Model
+
+The SQLite adapter exports its GORM model for advanced use cases:
+
+```go
+import "github.com/ieshan/adk-go-memory/adapter/sqlite"
+
+// Access the GORM model directly for custom queries
+var obs sqlite.StorageObservation
+
+// Use with GORM's fluent API
+db.Where("session_id = ?", "sess1").Find(&obs)
 ```
 
 ## Agent Integration Examples
@@ -1389,7 +1402,9 @@ make clean         # Clean artifacts
 
 **SQLite adapter** (`adapter/sqlite` submodule - requires CGO):
 - `github.com/asg017/sqlite-vec-go-bindings` - Vector search for SQLite
-- `github.com/mattn/go-sqlite3` - SQLite driver
+- `github.com/mattn/go-sqlite3` - SQLite driver (CGO)
+- `gorm.io/gorm` - GORM ORM
+- `gorm.io/driver/sqlite` - GORM SQLite driver
 
 ## Migration Guide
 

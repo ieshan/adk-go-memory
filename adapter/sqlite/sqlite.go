@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -12,7 +13,8 @@ import (
 	sqlitevec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	"github.com/ieshan/adk-go-memory/adapter"
 	"github.com/ieshan/idx"
-	_ "github.com/mattn/go-sqlite3"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func init() {
@@ -25,20 +27,19 @@ var _ adapter.Storage = (*SQLiteStorage)(nil)
 
 // SQLiteStorage implements Storage using SQLite with sqlite-vec and FTS5.
 type SQLiteStorage struct {
-	db    *sql.DB
+	db    *gorm.DB
 	ownDB bool // true if we opened the connection and should close it
 }
 
 // InMemory creates a new in-memory SQLite storage instance.
 func InMemory() (*SQLiteStorage, error) {
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: open memory db: %w", err)
 	}
 
 	storage := &SQLiteStorage{db: db, ownDB: true}
 	if err := storage.migrate(); err != nil {
-		db.Close()
 		return nil, err
 	}
 
@@ -47,27 +48,26 @@ func InMemory() (*SQLiteStorage, error) {
 
 // NewSQLiteStorage creates a new file-based SQLite storage.
 func NewSQLiteStorage(path string) (*SQLiteStorage, error) {
-	db, err := sql.Open("sqlite3", path)
+	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: open db: %w", err)
 	}
 
 	storage := &SQLiteStorage{db: db, ownDB: true}
 	if err := storage.migrate(); err != nil {
-		db.Close()
 		return nil, err
 	}
 
 	return storage, nil
 }
 
-// NewSQLiteStorageWithDB creates a new SQLiteStorage from an existing database connection.
-// The caller retains ownership of the provided *sql.DB and is responsible for closing it.
+// NewSQLiteStorageWithGORM creates a new SQLiteStorage from an existing GORM connection.
+// The caller retains ownership of the provided *gorm.DB and is responsible for closing it.
 // This is useful when integrating with existing connection pools or when the database
 // connection needs to be shared across multiple components.
-func NewSQLiteStorageWithDB(db *sql.DB) (*SQLiteStorage, error) {
+func NewSQLiteStorageWithGORM(db *gorm.DB) (*SQLiteStorage, error) {
 	if db == nil {
-		return nil, fmt.Errorf("sqlite: NewSQLiteStorageWithDB: db is nil")
+		return nil, fmt.Errorf("sqlite: NewSQLiteStorageWithGORM: db is nil")
 	}
 	storage := &SQLiteStorage{db: db, ownDB: false}
 	if err := storage.migrate(); err != nil {
@@ -78,29 +78,9 @@ func NewSQLiteStorageWithDB(db *sql.DB) (*SQLiteStorage, error) {
 
 // migrate creates the database schema.
 func (s *SQLiteStorage) migrate() error {
-	schema := `
-CREATE TABLE IF NOT EXISTS observations (
-    rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-    id BLOB UNIQUE NOT NULL,
-    content TEXT NOT NULL,
-    level TEXT NOT NULL,
-    session_id TEXT NOT NULL,
-    user_id TEXT,
-    app_name TEXT,
-    tags TEXT, -- JSON array
-    times_derived INTEGER DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    embedding BLOB -- JSON array of floats
-);
-
-CREATE INDEX IF NOT EXISTS idx_observations_session ON observations(session_id);
-CREATE INDEX IF NOT EXISTS idx_observations_user ON observations(user_id);
-CREATE INDEX IF NOT EXISTS idx_observations_app ON observations(app_name);
-CREATE INDEX IF NOT EXISTS idx_observations_times_derived ON observations(times_derived DESC);
-CREATE INDEX IF NOT EXISTS idx_observations_created_at ON observations(created_at DESC);
-`
-	if _, err := s.db.Exec(schema); err != nil {
-		return fmt.Errorf("sqlite: migrate: %w", err)
+	// AutoMigrate creates the main table and indexes from the GORM model.
+	if err := s.db.AutoMigrate(&StorageObservation{}); err != nil {
+		return fmt.Errorf("sqlite: auto migrate: %w", err)
 	}
 
 	// sqlite-vec virtual table for vector similarity search
@@ -119,14 +99,74 @@ CREATE VIRTUAL TABLE IF NOT EXISTS observations_fts USING fts5(
 `
 
 	// Execute all schema statements
-	if _, err := s.db.Exec(vecSchema); err != nil {
+	if err := s.db.Exec(vecSchema).Error; err != nil {
 		return fmt.Errorf("sqlite: create vec0 table: %w", err)
 	}
-	if _, err := s.db.Exec(ftsSchema); err != nil {
+	if err := s.db.Exec(ftsSchema).Error; err != nil {
 		return fmt.Errorf("sqlite: create fts5 table: %w", err)
 	}
 
 	return nil
+}
+
+// toStorageObservation maps an adapter.Observation to a StorageObservation.
+func toStorageObservation(obs *adapter.Observation) *StorageObservation {
+	tagsJSON, _ := json.Marshal(obs.Tags)
+	var embeddingBlob []byte
+	if len(obs.Embedding) > 0 {
+		embeddingBlob, _ = json.Marshal(obs.Embedding)
+	}
+	return &StorageObservation{
+		ID:           obs.ID,
+		Content:      obs.Content,
+		Level:        string(obs.Level),
+		SessionID:    obs.SessionID,
+		UserID:       obs.UserID,
+		AppName:      obs.AppName,
+		Tags:         string(tagsJSON),
+		TimesDerived: obs.TimesDerived,
+		CreatedAt:    obs.CreatedAt,
+		Embedding:    embeddingBlob,
+	}
+}
+
+// toAdapterObservation maps a StorageObservation to an adapter.Observation.
+func toAdapterObservation(sobs *StorageObservation) (*adapter.Observation, error) {
+	obs := &adapter.Observation{
+		ID:           sobs.ID,
+		Content:      sobs.Content,
+		Level:        adapter.ObservationLevel(sobs.Level),
+		SessionID:    sobs.SessionID,
+		UserID:       sobs.UserID,
+		AppName:      sobs.AppName,
+		TimesDerived: sobs.TimesDerived,
+		CreatedAt:    sobs.CreatedAt,
+	}
+	if sobs.Tags != "" {
+		if err := json.Unmarshal([]byte(sobs.Tags), &obs.Tags); err != nil {
+			return nil, fmt.Errorf("sqlite: unmarshal tags: %w", err)
+		}
+	}
+	if len(sobs.Embedding) > 0 {
+		if err := json.Unmarshal(sobs.Embedding, &obs.Embedding); err != nil {
+			return nil, fmt.Errorf("sqlite: unmarshal embedding: %w", err)
+		}
+	}
+	return obs, nil
+}
+
+// scopedQuery returns a GORM query scoped by session_id, user_id, and app_name.
+func (s *SQLiteStorage) scopedQuery(db *gorm.DB, sessionID, userID, appName string) *gorm.DB {
+	if sessionID != "" {
+		db = db.Where("session_id = ?", sessionID)
+	}
+	if userID != "" {
+		db = db.Where("user_id = ?", userID)
+	}
+	if appName != "" {
+		db = db.Where("app_name = ?", appName)
+	}
+	return db
 }
 
 // Store saves an observation to storage.
@@ -134,94 +174,50 @@ CREATE VIRTUAL TABLE IF NOT EXISTS observations_fts USING fts5(
 // in a transaction so that a partial failure does not leave the database
 // in an inconsistent state.
 func (s *SQLiteStorage) Store(ctx context.Context, obs *adapter.Observation) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("sqlite: store: begin tx: %w", err)
-	}
-	defer tx.Rollback()
+	sobs := toStorageObservation(obs)
 
-	tagsJSON, _ := json.Marshal(obs.Tags)
-
-	// Serialize embedding as JSON blob (for backup/retrieval)
-	var embeddingBlob []byte
-	if len(obs.Embedding) > 0 {
-		embeddingBlob, _ = json.Marshal(obs.Embedding)
-	}
-
-	// Insert into main observations table
-	result, err := tx.ExecContext(ctx,
-		`INSERT INTO observations (id, content, level, session_id, user_id, app_name, tags, times_derived, created_at, embedding)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		obs.ID, obs.Content, obs.Level, obs.SessionID, obs.UserID, obs.AppName,
-		string(tagsJSON), obs.TimesDerived, obs.CreatedAt, embeddingBlob)
-	if err != nil {
-		return fmt.Errorf("sqlite: store: %w", err)
-	}
-
-	// Get the rowid for virtual table inserts
-	rowID, err := result.LastInsertId()
-	if err != nil {
-		return fmt.Errorf("sqlite: get last insert id: %w", err)
-	}
-
-	// Insert into FTS5 table for text search
-	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO observations_fts(rowid, content) VALUES (?, ?)`,
-		rowID, obs.Content); err != nil {
-		return fmt.Errorf("sqlite: store fts5: %w", err)
-	}
-
-	// Insert into vec0 table for vector search
-	if len(obs.Embedding) > 0 {
-		embeddingSerialized, err := sqlitevec.SerializeFloat32(obs.Embedding)
-		if err != nil {
-			return fmt.Errorf("sqlite: serialize embedding: %w", err)
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Insert into main observations table
+		if err := tx.Create(sobs).Error; err != nil {
+			return fmt.Errorf("sqlite: store: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO vec_observations(rowid, embedding) VALUES (?, ?)`,
-			rowID, embeddingSerialized); err != nil {
-			return fmt.Errorf("sqlite: store vec0: %w", err)
+
+		rowID := sobs.RowID
+
+		// Insert into FTS5 table for text search
+		if err := tx.Exec(
+			`INSERT INTO observations_fts(rowid, content) VALUES (?, ?)`,
+			rowID, obs.Content).Error; err != nil {
+			return fmt.Errorf("sqlite: store fts5: %w", err)
 		}
-	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("sqlite: store: commit: %w", err)
-	}
+		// Insert into vec0 table for vector search
+		if len(obs.Embedding) > 0 {
+			embeddingSerialized, err := sqlitevec.SerializeFloat32(obs.Embedding)
+			if err != nil {
+				return fmt.Errorf("sqlite: serialize embedding: %w", err)
+			}
+			if err := tx.Exec(
+				`INSERT INTO vec_observations(rowid, embedding) VALUES (?, ?)`,
+				rowID, embeddingSerialized).Error; err != nil {
+				return fmt.Errorf("sqlite: store vec0: %w", err)
+			}
+		}
 
-	return nil
+		return nil
+	})
 }
 
 // GetByID retrieves an observation by its ID.
 func (s *SQLiteStorage) GetByID(ctx context.Context, id idx.ID) (*adapter.Observation, error) {
-	var obs adapter.Observation
-	var tagsJSON string
-	var embeddingBlob []byte
-
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, content, level, session_id, user_id, app_name, tags, times_derived, created_at, embedding
-		 FROM observations WHERE id = ?`, id).Scan(
-		&obs.ID, &obs.Content, &obs.Level, &obs.SessionID,
-		&obs.UserID, &obs.AppName, &tagsJSON, &obs.TimesDerived,
-		&obs.CreatedAt, &embeddingBlob)
-	if err != nil {
-		if err == sql.ErrNoRows {
+	var sobs StorageObservation
+	if err := s.db.WithContext(ctx).First(&sobs, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("observation not found: %s", id.String())
 		}
 		return nil, err
 	}
-
-	if tagsJSON != "" {
-		if err := json.Unmarshal([]byte(tagsJSON), &obs.Tags); err != nil {
-			return nil, fmt.Errorf("sqlite: unmarshal tags: %w", err)
-		}
-	}
-	if len(embeddingBlob) > 0 {
-		if err := json.Unmarshal(embeddingBlob, &obs.Embedding); err != nil {
-			return nil, fmt.Errorf("sqlite: unmarshal embedding: %w", err)
-		}
-	}
-
-	return &obs, nil
+	return toAdapterObservation(&sobs)
 }
 
 // Search finds observations matching the given options.
@@ -280,14 +276,14 @@ func (s *SQLiteStorage) searchVector(ctx context.Context, opts *adapter.SearchOp
 	// Parameters: embedding, k, [filters...], limit
 	args := append([]interface{}{embeddingSerialized, opts.MaxResults}, filterArgs...)
 	args = append(args, opts.MaxResults)
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.db.WithContext(ctx).Raw(
 		`SELECT o.id, o.content, o.level, o.session_id, o.user_id, o.app_name, 
 		        o.tags, o.times_derived, o.created_at, o.embedding, v.distance
 		 FROM vec_observations v
 		 JOIN observations o ON o.rowid = v.rowid
 		 WHERE v.embedding MATCH ? AND k = ?`+filterClause+`
 		 ORDER BY v.distance
-		 LIMIT ?`, args...)
+		 LIMIT ?`, args...).Rows()
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: vector search: %w", err)
 	}
@@ -298,16 +294,13 @@ func (s *SQLiteStorage) searchVector(ctx context.Context, opts *adapter.SearchOp
 
 // queryRecentAsSearchResults returns recent observations when no embedding provided
 func (s *SQLiteStorage) queryRecentAsSearchResults(ctx context.Context, opts *adapter.SearchOptions) ([]adapter.SearchResult, error) {
-	whereClause, args := s.buildWhereClause(opts)
-	query := fmt.Sprintf(
-		`SELECT id, content, level, session_id, user_id, app_name, tags, times_derived, created_at, embedding
-		 FROM observations
-		 WHERE %s
-		 ORDER BY created_at DESC
-		 LIMIT ?`, whereClause)
-	args = append(args, opts.MaxResults)
+	query := s.scopedQuery(s.db.WithContext(ctx), opts.SessionID, opts.UserID, opts.AppName)
+	query = query.Order("id DESC").Limit(opts.MaxResults)
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := query.Model(&StorageObservation{}).Select(
+		"id", "content", "level", "session_id", "user_id", "app_name",
+		"tags", "times_derived", "created_at", "embedding",
+	).Rows()
 	if err != nil {
 		return nil, err
 	}
@@ -385,14 +378,14 @@ func (s *SQLiteStorage) searchFTS(ctx context.Context, opts *adapter.SearchOptio
 	// Use FTS5 MATCH with bm25 ranking
 	// bm25 returns lower values for better matches
 	args := append([]interface{}{escapedQuery}, append(filterArgs, opts.MaxResults)...)
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.db.WithContext(ctx).Raw(
 		`SELECT o.id, o.content, o.level, o.session_id, o.user_id, o.app_name,
 		        o.tags, o.times_derived, o.created_at, o.embedding, bm25(observations_fts)
 		 FROM observations_fts f
 		 JOIN observations o ON o.rowid = f.rowid
 		 WHERE f.observations_fts MATCH ?`+filterClause+`
 		 ORDER BY bm25(observations_fts)
-		 LIMIT ?`, args...)
+		 LIMIT ?`, args...).Rows()
 	if err != nil {
 		// If FTS5 syntax error, fall back to empty results rather than failing
 		if strings.Contains(err.Error(), "fts5: syntax error") {
@@ -595,67 +588,38 @@ func (s *SQLiteStorage) scanResultsWithDistance(rows *sql.Rows, source string) (
 	return results, rows.Err()
 }
 
-// buildWhereClause creates WHERE clause and args for filtered queries
-func (s *SQLiteStorage) buildWhereClause(opts *adapter.SearchOptions) (string, []interface{}) {
-	conditions := []string{"1=1"}
-	args := []interface{}{}
-
-	if opts.SessionID != "" {
-		conditions = append(conditions, "session_id = ?")
-		args = append(args, opts.SessionID)
-	}
-	if opts.UserID != "" {
-		conditions = append(conditions, "user_id = ?")
-		args = append(args, opts.UserID)
-	}
-	if opts.AppName != "" {
-		conditions = append(conditions, "app_name = ?")
-		args = append(args, opts.AppName)
-	}
-
-	return strings.Join(conditions, " AND "), args
-}
-
 // Forget deletes an observation by ID.
 // All deletes (main table, FTS5, vec0) are wrapped in a transaction
 // so that a partial failure does not leave the database in an inconsistent state.
 func (s *SQLiteStorage) Forget(ctx context.Context, id idx.ID) error {
-	// Get rowid first for virtual table cleanup
-	var rowid int64
-	err := s.db.QueryRowContext(ctx, `SELECT rowid FROM observations WHERE id = ?`, id).Scan(&rowid)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil // Already deleted
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Get rowid first for virtual table cleanup
+		var sobs StorageObservation
+		if err := tx.Select("rowid").First(&sobs, "id = ?", id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil // Already deleted
+			}
+			return err
 		}
-		return err
-	}
+		rowid := sobs.RowID
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("sqlite: forget: begin tx: %w", err)
-	}
-	defer tx.Rollback()
+		// Delete from main table
+		if err := tx.Delete(&StorageObservation{}, "id = ?", id).Error; err != nil {
+			return fmt.Errorf("sqlite: forget main: %w", err)
+		}
 
-	// Delete from main table
-	if _, err := tx.ExecContext(ctx, `DELETE FROM observations WHERE id = ?`, id); err != nil {
-		return fmt.Errorf("sqlite: forget main: %w", err)
-	}
+		// Delete from FTS5
+		if err := tx.Exec(`DELETE FROM observations_fts WHERE rowid = ?`, rowid).Error; err != nil {
+			return fmt.Errorf("sqlite: forget fts5: %w", err)
+		}
 
-	// Delete from FTS5
-	if _, err := tx.ExecContext(ctx, `DELETE FROM observations_fts WHERE rowid = ?`, rowid); err != nil {
-		return fmt.Errorf("sqlite: forget fts5: %w", err)
-	}
+		// Delete from vec0
+		if err := tx.Exec(`DELETE FROM vec_observations WHERE rowid = ?`, rowid).Error; err != nil {
+			return fmt.Errorf("sqlite: forget vec0: %w", err)
+		}
 
-	// Delete from vec0
-	if _, err := tx.ExecContext(ctx, `DELETE FROM vec_observations WHERE rowid = ?`, rowid); err != nil {
-		return fmt.Errorf("sqlite: forget vec0: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("sqlite: forget: commit: %w", err)
-	}
-
-	return nil
+		return nil
+	})
 }
 
 // Purge deletes observations matching the filter.
@@ -674,105 +638,70 @@ func (s *SQLiteStorage) Purge(ctx context.Context, filter map[string]string) err
 	}
 
 	// Build WHERE clause
-	whereClause := "1=1"
-	args := []interface{}{}
-
-	if sessionID, ok := filter["session_id"]; ok {
-		whereClause += ` AND session_id = ?`
-		args = append(args, sessionID)
-	}
-	if userID, ok := filter["user_id"]; ok {
-		whereClause += ` AND user_id = ?`
-		args = append(args, userID)
-	}
-	if appName, ok := filter["app_name"]; ok {
-		whereClause += ` AND app_name = ?`
-		args = append(args, appName)
-	}
+	sessionID := filter["session_id"]
+	userID := filter["user_id"]
+	appName := filter["app_name"]
 
 	// Require at least one recognized filter to prevent accidental full deletion
-	if len(args) == 0 {
+	if sessionID == "" && userID == "" && appName == "" {
 		return fmt.Errorf("sqlite: purge: at least one filter key (session_id, user_id, app_name) is required")
 	}
 
-	// Get rowids for virtual table cleanup (before transaction, since this is a read)
-	rowidQuery := fmt.Sprintf(`SELECT rowid FROM observations WHERE %s`, whereClause)
-	rows, err := s.db.QueryContext(ctx, rowidQuery, args...)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	var rowids []int64
-	for rows.Next() {
-		var rowid int64
-		if err := rows.Scan(&rowid); err != nil {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Collect rowids for virtual table cleanup
+		query := s.scopedQuery(tx, sessionID, userID, appName)
+		var results []StorageObservation
+		if err := query.Select("rowid").Find(&results).Error; err != nil {
 			return err
 		}
-		rowids = append(rowids, rowid)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
 
-	if len(rowids) == 0 {
-		return nil // Nothing to delete
-	}
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("sqlite: purge: begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Delete from main table
-	deleteQuery := fmt.Sprintf(`DELETE FROM observations WHERE %s`, whereClause)
-	_, err = tx.ExecContext(ctx, deleteQuery, args...)
-	if err != nil {
-		return fmt.Errorf("sqlite: purge main: %w", err)
-	}
-
-	// Clean up virtual tables
-	for _, rowid := range rowids {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM observations_fts WHERE rowid = ?`, rowid); err != nil {
-			return fmt.Errorf("sqlite: purge fts5: %w", err)
+		if len(results) == 0 {
+			return nil // Nothing to delete
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM vec_observations WHERE rowid = ?`, rowid); err != nil {
-			return fmt.Errorf("sqlite: purge vec0: %w", err)
+
+		// Delete from main table
+		deleteQuery := s.scopedQuery(tx, sessionID, userID, appName)
+		if err := deleteQuery.Delete(&StorageObservation{}).Error; err != nil {
+			return fmt.Errorf("sqlite: purge main: %w", err)
 		}
-	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("sqlite: purge: commit: %w", err)
-	}
+		// Clean up virtual tables
+		for _, sobs := range results {
+			if err := tx.Exec(`DELETE FROM observations_fts WHERE rowid = ?`, sobs.RowID).Error; err != nil {
+				return fmt.Errorf("sqlite: purge fts5: %w", err)
+			}
+			if err := tx.Exec(`DELETE FROM vec_observations WHERE rowid = ?`, sobs.RowID).Error; err != nil {
+				return fmt.Errorf("sqlite: purge vec0: %w", err)
+			}
+		}
 
-	return nil
+		return nil
+	})
 }
 
 // IncrementTimesDerived increments the times_derived counter for an observation.
 // Returns an error if the observation does not exist.
 func (s *SQLiteStorage) IncrementTimesDerived(ctx context.Context, id idx.ID) error {
-	result, err := s.db.ExecContext(ctx,
-		`UPDATE observations SET times_derived = times_derived + 1 WHERE id = ?`, id)
-	if err != nil {
-		return err
+	result := s.db.WithContext(ctx).Model(&StorageObservation{}).Where("id = ?", id).UpdateColumn("times_derived", gorm.Expr("times_derived + 1"))
+	if result.Error != nil {
+		return result.Error
 	}
-	n, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
+	if result.RowsAffected == 0 {
 		return fmt.Errorf("sqlite: increment times_derived: observation not found: %s", id.String())
 	}
 	return nil
 }
 
 // Close releases the database connection.
-// Note: When using NewSQLiteStorageWithDB, the caller retains ownership
-// of the *sql.DB connection and Close() does not close it.
+// Note: When using NewSQLiteStorageWithGORM, the caller retains ownership
+// of the *gorm.DB connection and Close() does not close it.
 func (s *SQLiteStorage) Close() error {
 	if s.ownDB {
-		return s.db.Close()
+		sqlDB, err := s.db.DB()
+		if err != nil {
+			return err
+		}
+		return sqlDB.Close()
 	}
 	return nil
 }
@@ -780,83 +709,39 @@ func (s *SQLiteStorage) Close() error {
 // QueryMostDerived returns observations sorted by times_derived DESC.
 // Most-derived facts (referenced multiple times) are returned first.
 func (s *SQLiteStorage) QueryMostDerived(ctx context.Context, sessionID, userID, appName string, limit int) ([]adapter.Observation, error) {
-	whereClause, args := s.buildWhereClause(&adapter.SearchOptions{
-		SessionID: sessionID,
-		UserID:    userID,
-		AppName:   appName,
-	})
-
-	query := fmt.Sprintf(
-		`SELECT id, content, level, session_id, user_id, app_name, tags, times_derived, created_at, embedding
-		 FROM observations
-		 WHERE %s
-		 ORDER BY times_derived DESC, created_at DESC
-		 LIMIT ?`, whereClause)
-	args = append(args, limit)
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
+	query := s.scopedQuery(s.db.WithContext(ctx), sessionID, userID, appName)
+	var results []StorageObservation
+	if err := query.Order("times_derived DESC, id DESC").Limit(limit).Find(&results).Error; err != nil {
 		return nil, fmt.Errorf("sqlite: query most derived: %w", err)
 	}
-	defer rows.Close()
 
-	return s.scanObservations(rows)
-}
-
-// QueryRecent returns observations sorted by created_at DESC.
-// Most recent observations are returned first.
-func (s *SQLiteStorage) QueryRecent(ctx context.Context, sessionID, userID, appName string, limit int) ([]adapter.Observation, error) {
-	whereClause, args := s.buildWhereClause(&adapter.SearchOptions{
-		SessionID: sessionID,
-		UserID:    userID,
-		AppName:   appName,
-	})
-
-	query := fmt.Sprintf(
-		`SELECT id, content, level, session_id, user_id, app_name, tags, times_derived, created_at, embedding
-		 FROM observations
-		 WHERE %s
-		 ORDER BY created_at DESC
-		 LIMIT ?`, whereClause)
-	args = append(args, limit)
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("sqlite: query recent: %w", err)
-	}
-	defer rows.Close()
-
-	return s.scanObservations(rows)
-}
-
-// scanObservations scans rows into Observation structs (without SearchResult wrapper)
-func (s *SQLiteStorage) scanObservations(rows *sql.Rows) ([]adapter.Observation, error) {
-	var observations []adapter.Observation
-	for rows.Next() {
-		var obs adapter.Observation
-		var tagsJSON string
-		var embeddingBlob []byte
-
-		err := rows.Scan(&obs.ID, &obs.Content, &obs.Level, &obs.SessionID,
-			&obs.UserID, &obs.AppName, &tagsJSON, &obs.TimesDerived,
-			&obs.CreatedAt, &embeddingBlob)
+	observations := make([]adapter.Observation, 0, len(results))
+	for i := range results {
+		obs, err := toAdapterObservation(&results[i])
 		if err != nil {
 			return nil, err
 		}
+		observations = append(observations, *obs)
+	}
+	return observations, nil
+}
 
-		if tagsJSON != "" {
-			if err := json.Unmarshal([]byte(tagsJSON), &obs.Tags); err != nil {
-				return nil, fmt.Errorf("sqlite: unmarshal tags: %w", err)
-			}
-		}
-		if len(embeddingBlob) > 0 {
-			if err := json.Unmarshal(embeddingBlob, &obs.Embedding); err != nil {
-				return nil, fmt.Errorf("sqlite: unmarshal embedding: %w", err)
-			}
-		}
-
-		observations = append(observations, obs)
+// QueryRecent returns observations sorted by id DESC (ULID-based, time-ordered).
+// Most recent observations are returned first.
+func (s *SQLiteStorage) QueryRecent(ctx context.Context, sessionID, userID, appName string, limit int) ([]adapter.Observation, error) {
+	query := s.scopedQuery(s.db.WithContext(ctx), sessionID, userID, appName)
+	var results []StorageObservation
+	if err := query.Order("id DESC").Limit(limit).Find(&results).Error; err != nil {
+		return nil, fmt.Errorf("sqlite: query recent: %w", err)
 	}
 
-	return observations, rows.Err()
+	observations := make([]adapter.Observation, 0, len(results))
+	for i := range results {
+		obs, err := toAdapterObservation(&results[i])
+		if err != nil {
+			return nil, err
+		}
+		observations = append(observations, *obs)
+	}
+	return observations, nil
 }

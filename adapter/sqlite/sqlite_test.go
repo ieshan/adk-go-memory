@@ -2,13 +2,14 @@ package sqlite
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 
 	"github.com/ieshan/adk-go-memory/adapter"
 	"github.com/ieshan/adk-go-pkg/testutil"
 	"github.com/ieshan/idx"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestSQLiteStorage_VectorSearch(t *testing.T) {
@@ -241,13 +242,15 @@ func TestSQLiteStorage_QueryRecent(t *testing.T) {
 	defer storage.Close()
 
 	now := time.Now()
+	// IDs are ULID-based and time-ordered; create them in chronological order
+	// so that id DESC corresponds to recency.
 	idOld := idx.NewID()
-	idNew := idx.NewID()
 	idMiddle := idx.NewID()
+	idNew := idx.NewID()
 	observations := []*adapter.Observation{
 		{ID: idOld, Content: "old", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now.Add(-2 * time.Hour)},
-		{ID: idNew, Content: "new", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now},
 		{ID: idMiddle, Content: "middle", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now.Add(-1 * time.Hour)},
+		{ID: idNew, Content: "new", Level: adapter.LevelExplicit, SessionID: "s1", UserID: "u1", AppName: "a1", CreatedAt: now},
 	}
 
 	for _, obs := range observations {
@@ -265,15 +268,15 @@ func TestSQLiteStorage_QueryRecent(t *testing.T) {
 		t.Fatalf("Expected 3 results, got %d", len(results))
 	}
 
-	// Should be ordered by CreatedAt DESC (newest first)
+	// Should be ordered by id DESC (ULID-based, time-ordered)
 	if results[0].ID != idNew {
-		t.Errorf("Expected new observation first (newest), got %s", results[0].ID.String())
+		t.Errorf("Expected new observation first (newest id), got %s", results[0].ID.String())
 	}
 	if results[1].ID != idMiddle {
 		t.Errorf("Expected middle observation second, got %s", results[1].ID.String())
 	}
 	if results[2].ID != idOld {
-		t.Errorf("Expected old observation third (oldest), got %s", results[2].ID.String())
+		t.Errorf("Expected old observation third (oldest id), got %s", results[2].ID.String())
 	}
 }
 
@@ -1091,20 +1094,19 @@ func TestSQLiteStorage_Purge_MixedFilterKeys(t *testing.T) {
 	}
 }
 
-func TestNewSQLiteStorageWithDB(t *testing.T) {
+func TestNewSQLiteStorageWithGORM(t *testing.T) {
 	ctx := context.Background()
 
-	// Create a raw database connection
-	db, err := sql.Open("sqlite3", ":memory:")
+	// Create a GORM database connection
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
-	defer db.Close()
 
 	// Create storage from existing connection
-	storage, err := NewSQLiteStorageWithDB(db)
+	storage, err := NewSQLiteStorageWithGORM(db)
 	if err != nil {
-		t.Fatalf("NewSQLiteStorageWithDB() error = %v", err)
+		t.Fatalf("NewSQLiteStorageWithGORM() error = %v", err)
 	}
 
 	// Verify storage works
@@ -1138,30 +1140,40 @@ func TestNewSQLiteStorageWithDB(t *testing.T) {
 	}
 
 	// Verify db is still usable (not closed)
-	if err := db.Ping(); err != nil {
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("db.DB() error = %v", err)
+	}
+	if err := sqlDB.Ping(); err != nil {
 		t.Errorf("db.Ping() failed after storage.Close(): %v", err)
 	}
+	sqlDB.Close()
 }
 
-func TestNewSQLiteStorageWithDB_Migrations(t *testing.T) {
+func TestNewSQLiteStorageWithGORM_Migrations(t *testing.T) {
 	ctx := context.Background()
 
-	// Create a raw database connection
-	db, err := sql.Open("sqlite3", ":memory:")
+	// Create a GORM database connection
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
-	defer db.Close()
 
 	// Create storage - should apply migrations
-	storage, err := NewSQLiteStorageWithDB(db)
+	storage, err := NewSQLiteStorageWithGORM(db)
 	if err != nil {
-		t.Fatalf("NewSQLiteStorageWithDB() error = %v", err)
+		t.Fatalf("NewSQLiteStorageWithGORM() error = %v", err)
 	}
 
 	// Verify schema was created by checking a table exists
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("db.DB() error = %v", err)
+	}
+	defer sqlDB.Close()
+
 	var count int
-	err = db.QueryRowContext(ctx,
+	err = sqlDB.QueryRowContext(ctx,
 		"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='observations'").Scan(&count)
 	if err != nil {
 		t.Fatalf("Failed to check for observations table: %v", err)
@@ -1171,7 +1183,7 @@ func TestNewSQLiteStorageWithDB_Migrations(t *testing.T) {
 	}
 
 	// Verify FTS table exists
-	err = db.QueryRowContext(ctx,
+	err = sqlDB.QueryRowContext(ctx,
 		"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='observations_fts'").Scan(&count)
 	if err != nil {
 		t.Fatalf("Failed to check for observations_fts table: %v", err)
@@ -1181,7 +1193,7 @@ func TestNewSQLiteStorageWithDB_Migrations(t *testing.T) {
 	}
 
 	// Verify vec table exists
-	err = db.QueryRowContext(ctx,
+	err = sqlDB.QueryRowContext(ctx,
 		"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='vec_observations'").Scan(&count)
 	if err != nil {
 		t.Fatalf("Failed to check for vec_observations table: %v", err)
@@ -1193,28 +1205,27 @@ func TestNewSQLiteStorageWithDB_Migrations(t *testing.T) {
 	storage.Close()
 }
 
-func TestNewSQLiteStorageWithDB_NilDB(t *testing.T) {
+func TestNewSQLiteStorageWithGORM_NilDB(t *testing.T) {
 	// Test with nil database
-	_, err := NewSQLiteStorageWithDB(nil)
+	_, err := NewSQLiteStorageWithGORM(nil)
 	if err == nil {
 		t.Error("Expected error for nil database")
 	}
 }
 
-func TestNewSQLiteStorageWithDB_ReuseConnection(t *testing.T) {
+func TestNewSQLiteStorageWithGORM_ReuseConnection(t *testing.T) {
 	ctx := context.Background()
 
-	// Create a shared database connection
-	db, err := sql.Open("sqlite3", ":memory:")
+	// Create a shared GORM database connection
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
-	defer db.Close()
 
 	// Create first storage instance
-	storage1, err := NewSQLiteStorageWithDB(db)
+	storage1, err := NewSQLiteStorageWithGORM(db)
 	if err != nil {
-		t.Fatalf("NewSQLiteStorageWithDB() #1 error = %v", err)
+		t.Fatalf("NewSQLiteStorageWithGORM() #1 error = %v", err)
 	}
 
 	// Store something
@@ -1234,9 +1245,9 @@ func TestNewSQLiteStorageWithDB_ReuseConnection(t *testing.T) {
 	storage1.Close()
 
 	// Create second storage instance with same connection
-	storage2, err := NewSQLiteStorageWithDB(db)
+	storage2, err := NewSQLiteStorageWithGORM(db)
 	if err != nil {
-		t.Fatalf("NewSQLiteStorageWithDB() #2 error = %v", err)
+		t.Fatalf("NewSQLiteStorageWithGORM() #2 error = %v", err)
 	}
 
 	// Verify we can read what storage1 wrote
@@ -1265,8 +1276,12 @@ func TestNewSQLiteStorageWithDB_ReuseConnection(t *testing.T) {
 	storage2.Close()
 
 	// Verify data is still accessible through raw db
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("db.DB() error = %v", err)
+	}
 	var content string
-	err = db.QueryRowContext(ctx,
+	err = sqlDB.QueryRowContext(ctx,
 		"SELECT content FROM observations WHERE id = ?", id2).Scan(&content)
 	if err != nil {
 		t.Fatalf("Query through raw db failed: %v", err)
@@ -1274,6 +1289,7 @@ func TestNewSQLiteStorageWithDB_ReuseConnection(t *testing.T) {
 	if content != "second storage" {
 		t.Errorf("Content from raw db = %q, want %q", content, "second storage")
 	}
+	sqlDB.Close()
 }
 
 func TestSQLiteStorage_Purge_EmptyFilter(t *testing.T) {

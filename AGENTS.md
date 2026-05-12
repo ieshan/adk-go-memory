@@ -18,7 +18,7 @@ Guide for AI coding agents working in `github.com/ieshan/adk-go-memory`.
 
 ## Essential Commands
 
-Use the Makefile at repo root.
+**Always use `make`. Do not run `go` commands directly.** The Makefile handles module boundaries, CGO, build tags, and working-directory changes correctly.
 
 ```bash
 # Core tests (root module)
@@ -36,7 +36,7 @@ make build
 # Vet root + sqlite submodule
 make vet
 
-# Full check
+# Full check (test + test-sqlite + vet + build)
 make check
 
 # Coverage (root + sqlite adapter)
@@ -46,18 +46,28 @@ make coverage
 make clean
 ```
 
-Direct commands used by Makefile:
+### Running specific tests
+
+All `test*` targets accept an `ARGS` override so you can target a specific package or test case without leaving `make`.
 
 ```bash
-go test -v ./...
-cd adapter/sqlite && CGO_ENABLED=1 go test -v -tags=sqlite_fts5 ./...
-go test -v -race ./...
-cd adapter/sqlite && CGO_ENABLED=1 go test -v -race -tags=sqlite_fts5 ./...
-go build ./...
-cd adapter/sqlite && CGO_ENABLED=1 go build -tags=sqlite_fts5 ./...
-go vet ./...
-cd adapter/sqlite && CGO_ENABLED=1 go vet -tags=sqlite_fts5 ./...
+# Specific package in the root module
+make test ARGS="./adapter"
+
+# Specific test case across the root module
+make test ARGS="-run TestDeriver"
+
+# Specific package + test case in the root module
+make test ARGS="./adapter -run TestMemoryStorage"
+
+# Specific test case in the SQLite adapter
+make test-sqlite ARGS="-run TestSQLiteStorage"
+
+# Specific package with race detection
+make test-race ARGS="./service"
 ```
+
+Go tests are package-level, not file-level. To narrow down to a single file’s tests, target the package and use `-run` with the test function name.
 
 ## Build/Test Requirements
 
@@ -65,7 +75,7 @@ cd adapter/sqlite && CGO_ENABLED=1 go vet -tags=sqlite_fts5 ./...
 - SQLite adapter in `adapter/sqlite` requires:
   - `CGO_ENABLED=1`
   - build tag `sqlite_fts5`
-  - dependencies in submodule `adapter/sqlite/go.mod` (`mattn/go-sqlite3`, `sqlite-vec-go-bindings`)
+  - dependencies in submodule `adapter/sqlite/go.mod` (`gorm.io/driver/sqlite`, `gorm.io/gorm`)
 
 ## Project Structure
 
@@ -169,5 +179,6 @@ cd adapter/sqlite && CGO_ENABLED=1 go vet -tags=sqlite_fts5 ./...
 1. Prefer `make test` for root-only changes.
 2. If touching `adapter/sqlite`, run `make test-sqlite` (and usually `make check`).
 3. If touching search or retrieval semantics, run relevant adapter tests plus service/provider tests.
-4. Keep interface assertions, error wrapping style, and cloning/dedup patterns consistent.
-5. For new storage behavior, update both root adapter tests and sqlite submodule tests when behavior should match.
+4. Use `ARGS` to narrow down to a specific package or test case (see **Running specific tests** above).
+5. Keep interface assertions, error wrapping style, and cloning/dedup patterns consistent.
+6. For new storage behavior, update both root adapter tests and sqlite submodule tests when behavior should match.
